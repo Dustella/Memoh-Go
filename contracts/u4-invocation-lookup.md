@@ -30,6 +30,8 @@ interface InvocationLookupResponse {
 
 在 U1 `features` 中以 `invocation_lookup` 声明。
 
+**进展**：已提交草稿 PR [felinics/Memoh#1405](https://github.com/felinics/Memoh/pull/1405)（分支 `Dustella:feat/session-invocation-lookup`）。实现与上面形状一致：未知 invocation 返回 200 `found:false`；鉴权与 `GetSession` 相同；只按路径中的 session 查询。尚缺 dev stack 实测（需要 Docker），PostgreSQL 集成测试未加。
+
 ## 客户端降级（当前实现）
 
 Outbox 条目状态机：
