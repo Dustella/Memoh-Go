@@ -1,0 +1,61 @@
+{
+  "items": [
+    {
+      "turn_id": "turn_1000aaaa",
+      "turn_position": 1,
+      "role": "user",
+      "text": "Summarise the README.",
+      "timestamp": "2026-09-28T10:00:00Z",
+      "id": "msg_u1"
+    },
+    {
+      "turn_id": "turn_1000aaaa",
+      "turn_position": 1,
+      "role": "assistant",
+      "timestamp": "2026-09-28T10:00:04Z",
+      "id": "msg_a1",
+      "messages": [
+        { "id": 0, "type": "reasoning", "content": "Read the file first.", "reasoning_timing": { "duration_ms": 900 } },
+        {
+          "id": 1,
+          "type": "tool",
+          "name": "read_file",
+          "tool_call_id": "call_r1",
+          "input": { "path": "README.md" },
+          "output": { "bytes": 4153 },
+          "running": false,
+          "execution_location": { "kind": "cloud", "name": "Cloud Computer" }
+        },
+        { "id": 2, "type": "text", "content": "The README describes a **mobile client** for Memoh." }
+      ]
+    },
+    {
+      "turn_id": "turn_2222cccc",
+      "turn_position": 2,
+      "role": "user",
+      "text": "What files changed in the last commit?",
+      "timestamp": "2026-09-28T11:40:55Z",
+      "id": "msg_u2"
+    },
+    {
+      "turn_id": "turn_2222cccc",
+      "turn_position": 2,
+      "role": "assistant",
+      "timestamp": "2026-09-28T11:41:05Z",
+      "id": "msg_a2",
+      "messages": [
+        { "id": 0, "type": "text", "content": "Let me check the commit. Running git now." },
+        {
+          "id": 1,
+          "type": "tool",
+          "name": "run_shell",
+          "tool_call_id": "call_aaa111",
+          "input": { "command": "git show --name-only HEAD" },
+          "output": { "exit_code": 0, "files": ["internal/handlers/runtime_ws.go"] },
+          "running": false
+        },
+        { "id": 2, "type": "text", "content": "One file changed: internal/handlers/runtime_ws.go." }
+      ]
+    }
+  ]
+}

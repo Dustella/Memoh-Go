@@ -23,7 +23,7 @@
 | 真机链路 P0.2 | ✅ 完成（中文 IME 人工复核搁置） | 2206123SC：四 Tab、返回、安全区、竖屏锁定、键盘避让 |
 | 存储/生命周期 P0.3 | ✅ 完成 | SQLite WAL + SecureStore 经后台、强杀、冷启动、覆盖安装后恢复 |
 | 模拟器 | ✅ 可用 | `Medium_Phone`，Android 15 / API 35，x86_64；`mise run android:emu`，MainActivity 已运行 |
-| 上游契约 P0.5 | ⏳ 未开始 | `contracts/` 仅有 README |
+| 上游契约 P0.5 | ✅ 完成 | `contracts/`：U1–U5、WS 协议、fixtures；全部有降级路径 |
 | 渲染基准 P0.4 | ⏳ 未开始 | 尚无夹具与 release 基线 |
 | 业务功能 | ⬜ 无 | 四个主入口仍为占位页；只有两个隐藏诊断路由 |
 | 版本控制 | ✅ 已初始化 | Git `main` 基线提交；尚无远端与 CI |
@@ -252,12 +252,8 @@ M2 是 XL 规模，可以拆成互不重叠的轨道，减少串行等待：
 ### 当前冲刺：完成 M1
 
 1. ~~**PF-01** 初始化 Git 仓库并做首个基线提交~~ ✅ 2026-09-28（CI 部分仍待做）。诊断路由已限定为 `__DEV__`，release 构建重定向到首页。
-2. **P0.5 契约对齐**（M 规模）：
-   - 以上游 commit `3e45c438` 为准，逐项核对 U1–U5 的源码证据。
-   - 在 `contracts/` 为每项写一页：现状、差距、建议字段、降级模式、owner。
-   - 从 `apps/web` 的 `runtime-client.ts` / `realtime.ts` 提取 snapshot/delta 与历史交接的行为，形成脱敏 fixture。
-   - 输出差距总表，交 maintainer 确认 owner。
-3. **PF-02** 建立纯 TS 单元测试框架，用 P0.5 fixture 写第一个 reducer 测试。
+2. ~~**P0.5 契约对齐**~~ ✅ 2026-09-28：`contracts/` 含 WS 协议页、U1–U5 各一页、差距总表与 derived fixtures。结论：U1–U5 均有客户端降级，M2 不被上游阻塞；U3/U4 服务端改动待 maintainer 认领。
+3. ~~**PF-02**~~ ✅ Vitest 5 + `npm test`；`core/sync/runtimeStream` 与 `core/conversation/applyRunDelta`（移植自 Web `applyRunPatch`）以 fixtures 测试，17 项通过。
 4. **P0.4 渲染基准**（M 规模）：
    - **PF-07** 先打通 release 构建。
    - 确定性事件源：100 增量/秒、突发 500/秒、10,000 条历史、单条 100,000 字符、中英混排与未闭合代码块。

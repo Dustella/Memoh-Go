@@ -1,0 +1,85 @@
+{
+  "ping": {
+    "status": "ok",
+    "container_backend": "docker",
+    "snapshot_supported": true,
+    "connectors": false,
+    "version": "dev",
+    "commit_hash": "3e45c43"
+  },
+  "login": {
+    "access_token": "FAKE.JWT.TOKEN",
+    "token_type": "Bearer",
+    "expires_at": "2026-09-29T19:41:30Z",
+    "user_id": "usr_0001",
+    "role": "member",
+    "display_name": "Alice Example",
+    "username": "alice",
+    "timezone": "Asia/Shanghai"
+  },
+  "bots": {
+    "items": [
+      {
+        "id": "bot_demo01",
+        "owner_user_id": "usr_0001",
+        "name": "research-bot",
+        "display_name": "Research Bot",
+        "is_active": true,
+        "status": "ready",
+        "check_state": "ok",
+        "check_issue_count": 0,
+        "current_user_permissions": ["chat", "manage"],
+        "created_at": "2026-09-01T10:00:00Z",
+        "updated_at": "2026-09-20T12:34:56Z"
+      }
+    ]
+  },
+  "sessions": {
+    "items": [
+      {
+        "id": "sess_0000aaaa",
+        "bot_id": "bot_demo01",
+        "type": "chat",
+        "session_mode": "",
+        "runtime_type": "model",
+        "title": "Last commit",
+        "created_at": "2026-09-28T10:00:00Z",
+        "updated_at": "2026-09-28T11:41:05Z"
+      }
+    ],
+    "next_cursor": ""
+  },
+  "run_accepted": {
+    "type": "run_accepted",
+    "run_id": "run_1111bbbb",
+    "invocation_id": "inv_3333dddd",
+    "session_id": "sess_0000aaaa",
+    "turn_id": "turn_2222cccc",
+    "epoch": "ep_7f3c",
+    "seq": 12,
+    "duplicate": false
+  },
+  "run_accepted_duplicate": {
+    "type": "run_accepted",
+    "run_id": "run_1111bbbb",
+    "invocation_id": "inv_3333dddd",
+    "session_id": "sess_0000aaaa",
+    "turn_id": "turn_2222cccc",
+    "duplicate": true
+  },
+  "run_rejected_busy": {
+    "type": "run_rejected",
+    "invocation_id": "inv_4444eeee",
+    "session_id": "sess_0000aaaa",
+    "code": "session_busy",
+    "message": "session already has an active run"
+  },
+  "control_ack_stale": {
+    "type": "control_ack",
+    "session_id": "sess_0000aaaa",
+    "run_id": "run_1111bbbb",
+    "control": "abort",
+    "control_id": "ctl_0001",
+    "applied": false
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "type": "runtime_snapshot",
+  "session_id": "sess_0000aaaa",
+  "epoch": "ep_7f3c",
+  "seq": 12,
+  "snapshot": {
+    "bot_id": "bot_demo01",
+    "session_id": "sess_0000aaaa",
+    "epoch": "ep_7f3c",
+    "seq": 12,
+    "updated_at": "2026-09-28T11:41:00Z",
+    "current_run_view": {
+      "run_id": "run_1111bbbb",
+      "turn_id": "turn_2222cccc",
+      "invocation_id": "inv_3333dddd",
+      "generation": "gen_1",
+      "status": "running",
+      "started_at": "2026-09-28T11:40:55Z",
+      "updated_at": "2026-09-28T11:41:00Z",
+      "user_turns": [
+        {
+          "turn_id": "turn_2222cccc",
+          "role": "user",
+          "text": "What files changed in the last commit?",
+          "timestamp": "2026-09-28T11:40:55Z",
+          "platform": "web"
+        }
+      ],
+      "messages": [{ "id": 0, "type": "text", "content": "Let me check the commit." }]
+    }
+  }
+}
