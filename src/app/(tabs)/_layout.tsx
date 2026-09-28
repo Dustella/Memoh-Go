@@ -59,6 +59,13 @@ export default function MainTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="db-selftest"
+        options={{
+          href: null,
+          title: '数据库自检',
+        }}
+      />
+      <Tabs.Screen
         name="bench"
         options={{
           href: null,

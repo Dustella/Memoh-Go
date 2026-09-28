@@ -180,7 +180,7 @@ npm test
 
 1. 实体机连接后：构建 arm64 release 基准包并运行 `node scripts/run-bench.mjs --serial d611eea3`，定稿列表选择。
 2. M2 需要用户提供独立测试部署（地址 + 测试账号，可做故障注入）。
-3. M2 轨道：SQLite migration 与仓储 → 连接/登录（ID-01～04）→ 只读会话（SS-01/02、CH-01）→ Outbox + 实时投影 → 聊天 UI。
+3. M2 轨道：~~SQLite migration 与仓储~~（已完成，见 `src/data/README.md`）→ 连接/登录（ID-01～04）→ 只读会话（SS-01/02、CH-01）→ Outbox + 实时投影 → 聊天 UI。
 ## 5. 本轮 Pitfalls
 
 ### 5.1 LAN 地址少了一位数字

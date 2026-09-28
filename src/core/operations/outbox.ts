@@ -54,13 +54,14 @@ export function createOutboxEntry(input: {
   now: number;
 }): OutboxEntry {
   if (!input.invocationId || !input.sessionId) throw new Error('Outbox entry needs invocationId and sessionId');
+  const { now, ...fields } = input;
   return {
-    ...input,
+    ...fields,
     status: 'queued',
     attempts: 0,
-    nextAttemptAt: input.now,
-    createdAt: input.now,
-    updatedAt: input.now,
+    nextAttemptAt: now,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
