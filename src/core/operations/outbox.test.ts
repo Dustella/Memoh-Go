@@ -13,6 +13,7 @@ import {
   onRunAccepted,
   onRunObserved,
   onTurnPersisted,
+  recover,
   type OutboxEntry,
 } from './outbox';
 
@@ -34,7 +35,9 @@ describe('outbox lifecycle', () => {
   });
 
   it('treats a duplicate ack after a resend as the same admission', () => {
-    const resent = markSent(onAckLost(markSent(entry('inv_3333dddd'), 1001), 5000), 5001);
+    const lost = onAckLost(markSent(entry('inv_3333dddd'), 1001), 5000);
+    expect(lost.status).toBe('unconfirmed');
+    const resent = markSent(recover(lost, { kind: 'resend' }, 5000), 5001);
     expect(resent.attempts).toBe(2);
     expect(onRunAccepted(resent, messages.run_accepted_duplicate, 5002)).toMatchObject({
       status: 'accepted',

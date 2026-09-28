@@ -2,11 +2,11 @@ import type { ScopeKey } from '../identity/scope';
 
 /**
  * Durable send intent (contracts/u4-invocation-lookup.md). An entry is written
- * before the first send and keeps its invocation id and payload for life, so
- * every retry is the same intent and the server's admission idempotency
- * guarantees at most one run.
+ * before the first send and keeps its invocation id and payload for life.
+ * `unconfirmed` means the ack was lost: the server may or may not have
+ * admitted it, and it is only resent once that is known to be safe.
  */
-export type OutboxStatus = 'queued' | 'sent' | 'accepted' | 'settled' | 'failed';
+export type OutboxStatus = 'queued' | 'sent' | 'unconfirmed' | 'accepted' | 'settled' | 'failed';
 
 export type MessagePayload = Readonly<{
   text: string;
@@ -33,6 +33,8 @@ export type OutboxEntry = Readonly<{
   turnId?: string;
   /** Last rejection / error code, for display and diagnostics. */
   lastCode?: string;
+  /** Unconfirmed and no safe automatic path: the UI must ask resend / discard. */
+  needsUser?: boolean;
 }>;
 
 export const MAX_ATTEMPTS = 20;
@@ -70,7 +72,15 @@ export function markSent(entry: OutboxEntry, now: number): OutboxEntry {
 /** `run_accepted`, including `duplicate: true` (attached to the existing run). */
 export function onRunAccepted(entry: OutboxEntry, ack: { run_id: string; turn_id: string }, now: number): OutboxEntry {
   if (entry.status === 'settled' || entry.status === 'failed') return entry;
-  return { ...entry, status: 'accepted', runId: ack.run_id, turnId: ack.turn_id, lastCode: undefined, updatedAt: now };
+  return {
+    ...entry,
+    status: 'accepted',
+    runId: ack.run_id,
+    turnId: ack.turn_id,
+    lastCode: undefined,
+    needsUser: undefined,
+    updatedAt: now,
+  };
 }
 
 /** Rejections that must never be retried with the same invocation id. */
@@ -86,10 +96,62 @@ export function onRejected(entry: OutboxEntry, code: string | undefined, now: nu
   return { ...entry, status: 'queued', lastCode: normalized, nextAttemptAt: now + backoffMs(entry.attempts), updatedAt: now };
 }
 
-/** Socket closed or the process restarted before an ack: resend the same intent. */
+/** Socket closed or the process restarted before an ack: the outcome is unknown. */
 export function onAckLost(entry: OutboxEntry, now: number): OutboxEntry {
   if (entry.status !== 'sent') return entry;
-  return { ...entry, status: 'queued', nextAttemptAt: now, updatedAt: now };
+  return { ...entry, status: 'unconfirmed', nextAttemptAt: now, updatedAt: now };
+}
+
+/**
+ * Settle an `unconfirmed` entry. Callers pick the step from the server's
+ * proven capabilities (identity/capabilities.ts#recoveryMode):
+ * - `lookup` outcomes come from operations/invocationLookup.ts;
+ * - `resend` is only valid when admission dedup is proven;
+ * - `confirm` waits for the user, who may resend or discard.
+ * A runtime snapshot carrying the invocation id settles it in any mode
+ * (onRunObserved).
+ */
+export type Recovery =
+  | Readonly<{ kind: 'found'; runId: string; turnId: string }>
+  | Readonly<{ kind: 'not_found' }>
+  | Readonly<{ kind: 'retry_later' }>
+  | Readonly<{ kind: 'resend' }>
+  | Readonly<{ kind: 'await_user' }>
+  | Readonly<{ kind: 'user_resend' }>
+  | Readonly<{ kind: 'user_discard' }>
+  /** The target is gone (e.g. session deleted); nothing can be sent. */
+  | Readonly<{ kind: 'fail'; code: string }>;
+
+export function recover(entry: OutboxEntry, step: Recovery, now: number): OutboxEntry {
+  if (entry.status !== 'unconfirmed') return entry;
+  switch (step.kind) {
+    case 'fail':
+      return { ...entry, status: 'failed', needsUser: undefined, lastCode: step.code, updatedAt: now };
+    case 'found':
+      return onRunAccepted(entry, { run_id: step.runId, turn_id: step.turnId }, now);
+    case 'not_found':
+    case 'resend':
+    case 'user_resend':
+      return { ...entry, status: 'queued', needsUser: undefined, nextAttemptAt: now, updatedAt: now };
+    case 'retry_later':
+      return { ...entry, nextAttemptAt: now + backoffMs(entry.attempts), updatedAt: now };
+    case 'await_user':
+      return entry.needsUser ? entry : { ...entry, needsUser: true, updatedAt: now };
+    case 'user_discard':
+      return { ...entry, status: 'failed', needsUser: undefined, lastCode: 'discarded', updatedAt: now };
+  }
+}
+
+/** Unconfirmed entries whose recovery step is due (retry_later backoff respected). */
+export function unconfirmedDue(entries: readonly OutboxEntry[], scope: ScopeKey, now: number): OutboxEntry[] {
+  return entries.filter(
+    (entry) => entry.scope === scope && entry.status === 'unconfirmed' && !entry.needsUser && entry.nextAttemptAt <= now,
+  );
+}
+
+/** Cold start: anything still `sent` lost its ack with the old process. */
+export function onColdStart(entries: readonly OutboxEntry[], now: number): OutboxEntry[] {
+  return entries.map((entry) => onAckLost(entry, now));
 }
 
 /**
