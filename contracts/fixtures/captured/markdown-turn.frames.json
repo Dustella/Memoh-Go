@@ -1,0 +1,346 @@
+[
+  {
+    "type": "runtime_snapshot",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 0,
+    "snapshot": {
+      "bot_id": "ce2929b1-c5d9-4507-bea3-c2454ab03e57",
+      "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+      "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+      "seq": 0,
+      "updated_at": "2026-09-28T15:13:54.900320034Z"
+    }
+  },
+  {
+    "type": "run_accepted",
+    "run_id": "f3c3bb94-34ab-450b-8517-86304eceeef9",
+    "invocation_id": "ccd93df8-6884-4c1d-945f-125af64ed072",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "turn_id": "63fdb861-8d31-463b-a12a-425c5dad024d",
+    "turn_position": 1,
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 2
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 1,
+    "delta": {
+      "current_run_view": {
+        "run_id": "f3c3bb94-34ab-450b-8517-86304eceeef9",
+        "turn_id": "63fdb861-8d31-463b-a12a-425c5dad024d",
+        "turn_position": 1,
+        "invocation_id": "ccd93df8-6884-4c1d-945f-125af64ed072",
+        "generation": "5808ab6c-f346-4f2a-834b-1bf71c572d7c",
+        "status": "admitting",
+        "started_at": "2026-09-28T15:13:54.913720945Z",
+        "updated_at": "2026-09-28T15:13:54.913720945Z",
+        "messages": [],
+        "fencing_token": 5
+      }
+    }
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 2,
+    "delta": {
+      "current_run_view": {
+        "run_id": "f3c3bb94-34ab-450b-8517-86304eceeef9",
+        "turn_id": "63fdb861-8d31-463b-a12a-425c5dad024d",
+        "turn_position": 1,
+        "invocation_id": "ccd93df8-6884-4c1d-945f-125af64ed072",
+        "generation": "5808ab6c-f346-4f2a-834b-1bf71c572d7c",
+        "status": "running",
+        "started_at": "2026-09-28T15:13:54.913720945Z",
+        "updated_at": "2026-09-28T15:13:54.913856675Z",
+        "messages": [],
+        "user_turns": [
+          {
+            "runtime_forkable": false,
+            "turn_id": "63fdb861-8d31-463b-a12a-425c5dad024d",
+            "turn_position": 1,
+            "role": "user",
+            "text": "In three short markdown bullet points, name three colours.",
+            "timestamp": "2026-09-28T15:13:54.903283157Z",
+            "platform": "web",
+            "sender_user_id": "33de9272-ce96-43e2-bb44-f39c9d249d25",
+            "external_message_id": "ccd93df8-6884-4c1d-945f-125af64ed072"
+          }
+        ],
+        "fencing_token": 5,
+        "request_user_turn": {
+          "runtime_forkable": false,
+          "turn_id": "63fdb861-8d31-463b-a12a-425c5dad024d",
+          "turn_position": 1,
+          "role": "user",
+          "text": "In three short markdown bullet points, name three colours.",
+          "timestamp": "2026-09-28T15:13:54.903283157Z",
+          "platform": "web",
+          "sender_user_id": "33de9272-ce96-43e2-bb44-f39c9d249d25",
+          "external_message_id": "ccd93df8-6884-4c1d-945f-125af64ed072"
+        }
+      }
+    }
+  },
+  {
+    "type": "model_preference_settled",
+    "run_id": "f3c3bb94-34ab-450b-8517-86304eceeef9",
+    "invocation_id": "ccd93df8-6884-4c1d-945f-125af64ed072",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489"
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 3,
+    "delta": {
+      "current_run_view": {
+        "run_id": "f3c3bb94-34ab-450b-8517-86304eceeef9",
+        "turn_id": "63fdb861-8d31-463b-a12a-425c5dad024d",
+        "turn_position": 1,
+        "invocation_id": "ccd93df8-6884-4c1d-945f-125af64ed072",
+        "generation": "5808ab6c-f346-4f2a-834b-1bf71c572d7c",
+        "status": "running",
+        "started_at": "2026-09-28T15:13:54.913720945Z",
+        "updated_at": "2026-09-28T15:13:54.932138475Z",
+        "messages": [],
+        "user_turns": [
+          {
+            "runtime_forkable": false,
+            "turn_id": "63fdb861-8d31-463b-a12a-425c5dad024d",
+            "turn_position": 1,
+            "role": "user",
+            "text": "In three short markdown bullet points, name three colours.",
+            "timestamp": "2026-09-28T15:13:54.903283157Z",
+            "platform": "web",
+            "sender_user_id": "33de9272-ce96-43e2-bb44-f39c9d249d25",
+            "external_message_id": "ccd93df8-6884-4c1d-945f-125af64ed072"
+          }
+        ],
+        "steer_supported": true,
+        "fencing_token": 5,
+        "request_user_turn": {
+          "runtime_forkable": false,
+          "turn_id": "63fdb861-8d31-463b-a12a-425c5dad024d",
+          "turn_position": 1,
+          "role": "user",
+          "text": "In three short markdown bullet points, name three colours.",
+          "timestamp": "2026-09-28T15:13:54.903283157Z",
+          "platform": "web",
+          "sender_user_id": "33de9272-ce96-43e2-bb44-f39c9d249d25",
+          "external_message_id": "ccd93df8-6884-4c1d-945f-125af64ed072"
+        }
+      }
+    }
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 4,
+    "delta": {
+      "run": {
+        "run_id": "f3c3bb94-34ab-450b-8517-86304eceeef9",
+        "status": "running",
+        "updated_at": "2026-09-28T15:13:54.94167895Z"
+      }
+    }
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 5,
+    "delta": {
+      "message_appends": [
+        {
+          "id": 0,
+          "type": "text",
+          "content": "-"
+        }
+      ]
+    }
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 6,
+    "delta": {
+      "message_appends": [
+        {
+          "id": 0,
+          "type": "text",
+          "content": " "
+        }
+      ]
+    }
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 7,
+    "delta": {
+      "message_appends": [
+        {
+          "id": 0,
+          "type": "text",
+          "content": "🔴"
+        }
+      ]
+    }
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 8,
+    "delta": {
+      "message_appends": [
+        {
+          "id": 0,
+          "type": "text",
+          "content": " Red"
+        }
+      ]
+    }
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 9,
+    "delta": {
+      "message_appends": [
+        {
+          "id": 0,
+          "type": "text",
+          "content": "\n- "
+        }
+      ]
+    }
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 10,
+    "delta": {
+      "message_appends": [
+        {
+          "id": 0,
+          "type": "text",
+          "content": "🌊"
+        }
+      ]
+    }
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 11,
+    "delta": {
+      "message_appends": [
+        {
+          "id": 0,
+          "type": "text",
+          "content": " Blue"
+        }
+      ]
+    }
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 12,
+    "delta": {
+      "message_appends": [
+        {
+          "id": 0,
+          "type": "text",
+          "content": "\n- "
+        }
+      ]
+    }
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 13,
+    "delta": {
+      "message_appends": [
+        {
+          "id": 0,
+          "type": "text",
+          "content": "🌿 Green"
+        }
+      ]
+    }
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 14,
+    "delta": {
+      "user_turn_upserts": [
+        {
+          "runtime_forkable": false,
+          "turn_id": "63fdb861-8d31-463b-a12a-425c5dad024d",
+          "turn_position": 1,
+          "role": "user",
+          "text": "In three short markdown bullet points, name three colours.",
+          "timestamp": "2026-09-28T15:13:57.452151Z",
+          "platform": "web",
+          "sender_user_id": "33de9272-ce96-43e2-bb44-f39c9d249d25",
+          "id": "a1865838-9740-4e69-abdb-354fc5c47237"
+        }
+      ]
+    }
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 15,
+    "delta": {
+      "run": {
+        "run_id": "f3c3bb94-34ab-450b-8517-86304eceeef9",
+        "status": "finishing",
+        "error_code": "",
+        "error": "",
+        "updated_at": "2026-09-28T15:13:57.46482138Z"
+      },
+      "message_upserts": [
+        {
+          "id": 0,
+          "type": "text",
+          "content": "- 🔴 Red\n- 🌊 Blue\n- 🌿 Green"
+        }
+      ]
+    }
+  },
+  {
+    "type": "runtime_delta",
+    "session_id": "ee552d6c-ece4-439a-bde9-3902e0479489",
+    "epoch": "7bd4ee41-4d76-4b20-b5d6-bf21a2261f62",
+    "seq": 16,
+    "delta": {
+      "run": {
+        "run_id": "f3c3bb94-34ab-450b-8517-86304eceeef9",
+        "status": "completed",
+        "error_code": "",
+        "error": "",
+        "updated_at": "2026-09-28T15:13:57.467606447Z"
+      }
+    }
+  }
+]

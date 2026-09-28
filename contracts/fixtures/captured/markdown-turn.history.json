@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "runtime_forkable": false,
+      "turn_id": "63fdb861-8d31-463b-a12a-425c5dad024d",
+      "turn_position": 1,
+      "role": "user",
+      "text": "In three short markdown bullet points, name three colours.",
+      "timestamp": "2026-09-28T15:13:57.452151Z",
+      "id": "a1865838-9740-4e69-abdb-354fc5c47237"
+    },
+    {
+      "runtime_forkable": false,
+      "turn_id": "63fdb861-8d31-463b-a12a-425c5dad024d",
+      "turn_position": 1,
+      "role": "assistant",
+      "messages": [
+        {
+          "id": 0,
+          "type": "text",
+          "content": "- 🔴 Red\n- 🌊 Blue\n- 🌿 Green"
+        }
+      ],
+      "timestamp": "2026-09-28T15:13:57.452151Z",
+      "id": "981f3a59-861e-495e-bc75-2a1bccbc40eb"
+    }
+  ]
+}

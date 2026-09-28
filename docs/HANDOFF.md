@@ -85,7 +85,7 @@ mise run android
 - 源码：WSL 内 `/home/dustella/memoh-dev`（当前在 PR #1405 分支 `feat/session-invocation-lookup`），用 `mise run dev` 启动，compose 项目名 `memoh-dev`。
 - 端口：server `18080`，channel `18081`，web `18082`，Postgres `15432`。
 - 开发账号：`admin` / `admin123`（来自 `devenv/app.dev.toml`，仅本地）。
-- **未配置模型提供方**：消息会被接受并记账，但 run 立即以 `failed` 结束，Bot 不会回复。
+- 模型：用户已在 Web 管理界面配置 provider 与 API key；默认 Bot `Kitty`（`ce2929b1-c5d9-4507-bea3-c2454ab03e57`）可正常回复。API key 只存在开发栈数据库中，不要读取或输出。另有两个测试 Bot（`mobile-smoke`、`PR1405 test bot`）。
 - Windows 侧访问：`.wslconfig` 设置了 `localhostForwarding=false`，所以 `127.0.0.1:18080` 不通，要用 WSL 虚拟机 IP（当前 `172.22.2.106`，WSL 重启后可能变化，用 `wsl -d archlinux -- ip -4 addr show eth0` 查询）。本机 HTTP 代理会把请求变成 502，curl 需加 `--noproxy '*'`。
 - 同一 Docker 里还有一个 2026-04 的旧 compose 项目 `memoh`（`/home/dustella/memoh/Memoh`）：`memoh-server` 已退出，`memoh-web` 反复重启。这是用户原有部署，未改动。
 
