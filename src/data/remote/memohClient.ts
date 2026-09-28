@@ -1,3 +1,4 @@
+import type { Turn } from '../../core/conversation/types';
 import type { PingResponse } from '../../core/identity/capabilities';
 
 /**
@@ -52,6 +53,16 @@ export type BotSummary = Readonly<{
 }>;
 
 export type Timed<T> = Readonly<{ body: T; serverDate: string | null }>;
+
+export type SessionSummary = Readonly<{
+  id: string;
+  bot_id: string;
+  title?: string;
+  type?: string;
+  channel_type?: string;
+  created_at?: string;
+  updated_at?: string;
+}>;
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
@@ -129,6 +140,42 @@ export class MemohClient {
 
   async listBots(token: string): Promise<BotSummary[]> {
     const { body } = await this.request<{ items?: BotSummary[] }>('GET', '/bots', { token });
+    return body.items ?? [];
+  }
+
+  /** Newest first; `nextCursor` is empty on the last page. */
+  async listSessions(
+    token: string,
+    botId: string,
+    options: { cursor?: string; limit?: number } = {},
+  ): Promise<{ items: SessionSummary[]; nextCursor: string }> {
+    const query = new URLSearchParams();
+    if (options.limit) query.set('limit', String(options.limit));
+    if (options.cursor) query.set('cursor', options.cursor);
+    const qs = query.toString();
+    const { body } = await this.request<{ items?: SessionSummary[]; next_cursor?: string }>(
+      'GET',
+      `/bots/${encodeURIComponent(botId)}/sessions${qs ? `?${qs}` : ''}`,
+      { token },
+    );
+    return { items: body.items ?? [], nextCursor: body.next_cursor ?? '' };
+  }
+
+  /** Persisted turns, old → new; the page starts on a turn boundary. */
+  async listMessages(
+    token: string,
+    botId: string,
+    sessionId: string,
+    options: { limit?: number; beforeMessageId?: string } = {},
+  ): Promise<Turn[]> {
+    const query = new URLSearchParams({ session_id: sessionId });
+    if (options.limit) query.set('limit', String(options.limit));
+    if (options.beforeMessageId) query.set('before_message_id', options.beforeMessageId);
+    const { body } = await this.request<{ items?: Turn[] }>(
+      'GET',
+      `/bots/${encodeURIComponent(botId)}/messages?${query.toString()}`,
+      { token },
+    );
     return body.items ?? [];
   }
 }

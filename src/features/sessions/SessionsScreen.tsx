@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { BotRecord } from '../../data/local/conversationStore';
@@ -16,7 +17,15 @@ function BotRow({ bot }: { bot: BotRecord }) {
   const name = bot.display_name || bot.name || bot.id;
   const ready = bot.is_active !== false && (bot.status ?? 'ready') === 'ready';
   return (
-    <View style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${name}，打开会话列表`}
+      onPress={() => router.push({ pathname: '/bot/[botId]', params: { botId: bot.id } })}
+      style={({ pressed }) => [
+        styles.row,
+        { backgroundColor: pressed ? colors.surfaceMuted : colors.surface, borderColor: colors.border },
+      ]}
+    >
       <View style={[styles.avatar, { backgroundColor: colors.accentSoft }]}>
         <Text style={[styles.avatarText, { color: colors.accent }]}>{initials(name)}</Text>
       </View>
@@ -30,7 +39,7 @@ function BotRow({ bot }: { bot: BotRecord }) {
         </View>
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.textSubtle} />
-    </View>
+    </Pressable>
   );
 }
 

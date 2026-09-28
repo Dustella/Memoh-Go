@@ -187,6 +187,17 @@ npm test
 ### 模拟器登录 dev stack
 
 在连接页输入 `http://172.22.2.106:18080`（WSL IP，重启后可能变化），账号 `admin` / `admin123`。模拟器可直接访问 WSL IP。
+
+### 占位与模拟（必须在交付前替换或确认）
+
+| 位置 | 性质 | 替换条件 |
+| --- | --- | --- |
+| `src/features/chat/ChatScreen.tsx` 底部"只读预览 · 发送功能即将开放" | 占位输入框，不可输入 | Outbox 发送 worker + 实时订阅完成后换成真实 Composer |
+| 首页、资源 Tab（`PlaceholderScreen`） | 静态占位页 | M3 首页摘要、M4 资源 |
+| `OSS_DEFAULT_TEAM_ID`（`src/core/identity/credential.ts`） | 所有账号固定用 OSS 默认 Team | Cloud Team 契约确定后改为真实 Team 选择 |
+| `pageHasOlder`（`src/application/conversation/conversationSync.ts`） | 假设每个会话的 `turn_position` 从 1 开始（dev stack 观察所得，未在源码确认）；更早的空页会纠正 | 上游提供 committed-through / has_more 标记（U3） |
+| 单元测试中的假 Memoh 服务端（`connectService.test.ts`、`conversationSync.test.ts`） | 仅测试用；响应形状按 dev stack 实测 | — |
+| `/bench`、`/db-selftest`、`/diagnostics`、`/storage-diagnostics` | 开发专用页，release 构建重定向回首页（bench 可用 `EXPO_PUBLIC_BENCH=1` 打开） | — |
 ## 5. 本轮 Pitfalls
 
 ### 5.1 LAN 地址少了一位数字

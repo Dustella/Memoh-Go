@@ -28,8 +28,10 @@ export default function RootLayout() {
     <AppServicesProvider fallback={(state) => (state.kind === 'failed' ? <BootFailure message={state.error.message} /> : null)}>
       <StatusBar style="auto" />
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="(tabs)" options={{ title: '会话' }} />
         <Stack.Screen name="connect" options={{ animation: 'fade' }} />
+        <Stack.Screen name="bot/[botId]" options={{ headerShown: true }} />
+        <Stack.Screen name="chat/[botId]/[sessionId]" options={{ headerShown: true }} />
       </Stack>
     </AppServicesProvider>
   );

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 
 import { ConnectionManager, type AccessState } from '../application/access/connectService';
+import { ConversationSync } from '../application/conversation/conversationSync';
 import { newId } from '../core/ids';
 import { openExpoDatabase } from '../data/local/expoDatabase';
 import type { SqlDatabase } from '../data/local/sql';
@@ -11,21 +12,22 @@ import { secureCredentialVault } from '../platform/secureCredentialVault';
 installPlatformCrypto();
 
 /** Everything the screens use, built once per process. */
-export type AppServices = Readonly<{ db: SqlDatabase; access: ConnectionManager }>;
+export type AppServices = Readonly<{ db: SqlDatabase; access: ConnectionManager; sync: ConversationSync }>;
 
 const DATABASE_FILE = 'memoh-go.db';
 
 async function createAppServices(): Promise<AppServices> {
   const db = await openExpoDatabase(DATABASE_FILE);
+  const fetchFn = fetch as unknown as FetchFn;
   const access = new ConnectionManager({
     db,
     vault: secureCredentialVault,
-    fetchFn: fetch as unknown as FetchFn,
+    fetchFn,
     now: Date.now,
     newId,
   });
   await access.restore();
-  return { db, access };
+  return { db, access, sync: new ConversationSync(db, access, fetchFn, Date.now) };
 }
 
 let servicesPromise: Promise<AppServices> | undefined;
