@@ -80,6 +80,15 @@ mise run android
 
 不要在没有必要或未经说明时终止、替换或重启这个用户终端中的 Metro 进程。
 
+### 2.3.1 本地 Memoh 开发栈（WSL Arch + Docker）
+
+- 源码：WSL 内 `/home/dustella/memoh-dev`（当前在 PR #1405 分支 `feat/session-invocation-lookup`），用 `mise run dev` 启动，compose 项目名 `memoh-dev`。
+- 端口：server `18080`，channel `18081`，web `18082`，Postgres `15432`。
+- 开发账号：`admin` / `admin123`（来自 `devenv/app.dev.toml`，仅本地）。
+- **未配置模型提供方**：消息会被接受并记账，但 run 立即以 `failed` 结束，Bot 不会回复。
+- Windows 侧访问：`.wslconfig` 设置了 `localhostForwarding=false`，所以 `127.0.0.1:18080` 不通，要用 WSL 虚拟机 IP（当前 `172.22.2.106`，WSL 重启后可能变化，用 `wsl -d archlinux -- ip -4 addr show eth0` 查询）。本机 HTTP 代理会把请求变成 502，curl 需加 `--noproxy '*'`。
+- 同一 Docker 里还有一个 2026-04 的旧 compose 项目 `memoh`（`/home/dustella/memoh/Memoh`）：`memoh-server` 已退出，`memoh-web` 反复重启。这是用户原有部署，未改动。
+
 ### 2.4 Metro LAN 链路
 
 已验证的网络拓扑：
