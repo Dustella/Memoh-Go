@@ -58,6 +58,14 @@ export default function MainTabsLayout() {
           title: '存储诊断',
         }}
       />
+      <Tabs.Screen
+        name="bench"
+        options={{
+          href: null,
+          headerShown: false,
+          title: '渲染基准',
+        }}
+      />
     </Tabs>
   );
 }
