@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 import { migrate } from './migrations';
-import { bindable, type SqlDatabase, type SqlExecutor } from './sql';
+import { bindable, createLock, type SqlDatabase, type SqlExecutor } from './sql';
 
 type ExpoExecutor = Pick<SQLite.SQLiteDatabase, 'runAsync' | 'getAllAsync' | 'getFirstAsync' | 'execAsync'>;
 
@@ -24,22 +24,24 @@ function executor(db: ExpoExecutor): SqlExecutor {
 export async function openExpoDatabase(fileName: string): Promise<SqlDatabase> {
   const raw = await SQLite.openDatabaseAsync(fileName);
   await raw.execAsync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
-  let inTransaction = false;
+  const exclusive = createLock();
+  const direct = executor(raw);
   const database: SqlDatabase = {
-    ...executor(raw),
-    async transaction(work) {
-      if (inTransaction) throw new Error('Nested SQL transactions are not supported');
-      inTransaction = true;
-      try {
+    // Outside a transaction every statement takes the same lock, so another
+    // flow's writes cannot interleave with an open transaction.
+    run: (sql, params) => exclusive(() => direct.run(sql, params)),
+    all: (sql, params) => exclusive(() => direct.all(sql, params)),
+    first: (sql, params) => exclusive(() => direct.first(sql, params)),
+    exec: (sql) => exclusive(() => direct.exec(sql)),
+    transaction(work) {
+      return exclusive(async () => {
         let result!: Awaited<ReturnType<typeof work>>;
-        // Exclusive: other queries on this connection wait until it commits.
+        // Exclusive: plain queries on this connection wait until it commits.
         await raw.withExclusiveTransactionAsync(async (tx) => {
           result = await work(executor(tx));
         });
         return result;
-      } finally {
-        inTransaction = false;
-      }
+      });
     },
     close: () => raw.closeAsync(),
   };

@@ -119,6 +119,26 @@ export const MIGRATIONS: readonly { version: number; up: string }[] = [
       );
     `,
   },
+  {
+    version: 2,
+    up: `
+      -- One row per signed-in (deployment, account). Credentials never live
+      -- here: they are in SecureStore under credential_key.
+      CREATE TABLE connections (
+        connection_id TEXT PRIMARY KEY NOT NULL,
+        deployment TEXT NOT NULL,
+        account_id TEXT NOT NULL,
+        team_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        server_version TEXT NOT NULL,
+        server_commit TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        last_used_at INTEGER NOT NULL,
+        UNIQUE (deployment, account_id)
+      );
+    `,
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

@@ -17,8 +17,8 @@ export interface SqlExecutor {
 export interface SqlDatabase extends SqlExecutor {
   /**
    * Run `work` atomically. Only statements issued through `tx` belong to the
-   * transaction; never mix in calls on the outer database from inside it.
-   * Not re-entrant.
+   * transaction. Concurrent transactions are queued (FIFO); a transaction
+   * must never call the outer database, or it waits on itself.
    */
   transaction<T>(work: (tx: SqlExecutor) => Promise<T>): Promise<T>;
   close(): Promise<void>;
@@ -31,4 +31,19 @@ export function bindable(params: readonly SqlParam[] = []): SqlValue[] {
     if (typeof value === 'boolean') return value ? 1 : 0;
     return value;
   });
+}
+
+/**
+ * FIFO lock. Independent flows (a sync, a send, a draft save) open
+ * transactions concurrently; they run one after another instead of failing.
+ * Calling the outer database from inside a transaction would wait on itself,
+ * which is why `transaction` hands work its own executor.
+ */
+export function createLock() {
+  let tail: Promise<unknown> = Promise.resolve();
+  return function runExclusive<T>(work: () => Promise<T>): Promise<T> {
+    const result = tail.then(work, work);
+    tail = result.catch(() => undefined);
+    return result;
+  };
 }

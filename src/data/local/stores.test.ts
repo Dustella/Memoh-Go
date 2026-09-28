@@ -254,6 +254,25 @@ describe('user state and scope isolation', () => {
       }),
     ).rejects.toThrow('boom');
     expect(await loadDraft(db, key)).toBe('');
-    await expect(db.transaction(async () => db.transaction(async () => 1))).rejects.toThrow(/Nested/);
+  });
+
+  it('queues concurrent transactions and keeps outside writes out of an open one', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const slow = db
+      .transaction(async (tx) => {
+        await saveDraft(tx, key, 'inside', 1);
+        await gate;
+        throw new Error('abort');
+      })
+      .catch(() => 'aborted');
+    const outside = saveDraft(db, { ...key, sessionId: 'other' }, 'outside', 2);
+    const second = db.transaction(async (tx) => saveDraft(tx, { ...key, sessionId: 'third' }, 'third', 3));
+    release();
+    expect(await slow).toBe('aborted');
+    await Promise.all([outside, second]);
+    expect(await loadDraft(db, key)).toBe('');
+    expect(await loadDraft(db, { ...key, sessionId: 'other' })).toBe('outside');
+    expect(await loadDraft(db, { ...key, sessionId: 'third' })).toBe('third');
   });
 });

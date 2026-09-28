@@ -179,8 +179,14 @@ npm test
 ## 4. 下一步
 
 1. 实体机连接后：构建 arm64 release 基准包并运行 `node scripts/run-bench.mjs --serial d611eea3`，定稿列表选择。
-2. M2 需要用户提供独立测试部署（地址 + 测试账号，可做故障注入）。
-3. M2 轨道：~~SQLite migration 与仓储~~（已完成，见 `src/data/README.md`）→ 连接/登录（ID-01～04）→ 只读会话（SS-01/02、CH-01）→ Outbox + 实时投影 → 聊天 UI。
+2. ~~M2 测试部署~~：已有 WSL 本地 dev stack（见 2.3.1）。
+3. M2 轨道：~~SQLite migration 与仓储~~ → ~~连接/登录（ID-01～04）~~（已完成，见 `src/application/access`）→ 只读会话（SS-01/02、CH-01）→ Outbox + 实时投影 → 聊天 UI。
+4. 真机的开发客户端需要重新原生构建：新增了原生依赖 `expo-crypto`，直接运行 `mise run android` 即可；旧 APK 会因缺少原生模块在启动时报错。
+5. release 构建默认禁止 http 明文访问（只有 debug manifest 允许）。自部署用户常用 `http://局域网IP`，发布前需决定是否放开或提示使用 https。
+
+### 模拟器登录 dev stack
+
+在连接页输入 `http://172.22.2.106:18080`（WSL IP，重启后可能变化），账号 `admin` / `admin123`。模拟器可直接访问 WSL IP。
 ## 5. 本轮 Pitfalls
 
 ### 5.1 LAN 地址少了一位数字

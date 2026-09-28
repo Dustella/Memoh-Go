@@ -1,7 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs, useSegments } from 'expo-router';
+
+import { useAccessState } from '../../bootstrap/AppServices';
+
+/** Hidden developer routes work without an account (e.g. the benchmark driver). */
+const UNGATED = new Set(['bench', 'db-selftest', 'diagnostics', 'storage-diagnostics']);
 
 export default function MainTabsLayout() {
+  const access = useAccessState();
+  const segments = useSegments() as string[];
+  const ungated = UNGATED.has(segments[segments.length - 1] ?? '');
+  if (!ungated && (access.kind === 'signed_out' || access.kind === 'needs_sign_in')) return <Redirect href="/connect" />;
+
   return (
     <Tabs screenOptions={{ tabBarHideOnKeyboard: true }}>
       <Tabs.Screen

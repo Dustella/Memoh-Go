@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 
 import { migrate } from '../../src/data/local/migrations';
-import { bindable, type SqlDatabase, type SqlExecutor } from '../../src/data/local/sql';
+import { bindable, createLock, type SqlDatabase, type SqlExecutor } from '../../src/data/local/sql';
 
 /**
  * SqlDatabase over Node's built-in SQLite, for unit tests of the local stores.
@@ -27,23 +27,24 @@ export function openNodeDatabase(path = ':memory:', options: { migrate?: boolean
     },
   };
 
-  let inTransaction = false;
+  const exclusive = createLock();
   const database: SqlDatabase = {
-    ...exec,
-    async transaction(work) {
-      if (inTransaction) throw new Error('Nested SQL transactions are not supported');
-      inTransaction = true;
-      raw.exec('BEGIN IMMEDIATE');
-      try {
-        const result = await work(exec);
-        raw.exec('COMMIT');
-        return result;
-      } catch (error) {
-        raw.exec('ROLLBACK');
-        throw error;
-      } finally {
-        inTransaction = false;
-      }
+    run: (sql, params) => exclusive(() => exec.run(sql, params)),
+    all: (sql, params) => exclusive(() => exec.all(sql, params)),
+    first: (sql, params) => exclusive(() => exec.first(sql, params)),
+    exec: (sql) => exclusive(() => exec.exec(sql)),
+    transaction(work) {
+      return exclusive(async () => {
+        raw.exec('BEGIN IMMEDIATE');
+        try {
+          const result = await work(exec);
+          raw.exec('COMMIT');
+          return result;
+        } catch (error) {
+          raw.exec('ROLLBACK');
+          throw error;
+        }
+      });
     },
     async close() {
       raw.close();

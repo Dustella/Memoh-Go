@@ -1,5 +1,6 @@
 import type { Turn } from '../../core/conversation/types';
 import { scopeKey } from '../../core/identity/scope';
+import { newId, randomSource } from '../../core/ids';
 import { createOutboxEntry, markSent } from '../../core/operations/outbox';
 import {
   loadHistoryCheckpoint,
@@ -9,8 +10,11 @@ import {
 } from '../../data/local/conversationStore';
 import { openExpoDatabase } from '../../data/local/expoDatabase';
 import { SCHEMA_VERSION } from '../../data/local/migrations';
-import { loadOutboxEntry, markOutboxColdStart, saveOutboxEntry } from '../../data/local/outboxStore';
+import { saveOutboxEntry, loadOutboxEntry, markOutboxColdStart } from '../../data/local/outboxStore';
 import { clearScope, loadDraft, saveDraft } from '../../data/local/userStateStore';
+import { installPlatformCrypto } from '../../platform/installPlatformCrypto';
+
+installPlatformCrypto();
 
 /**
  * Development-only check of the real stores through expo-sqlite, in its own
@@ -32,6 +36,12 @@ export async function runAppDatabaseSelfTest(): Promise<SelfTestCheck[]> {
   try {
     const version = await db.first<{ user_version: number }>('PRAGMA user_version');
     check('schema', version?.user_version === SCHEMA_VERSION, `user_version=${version?.user_version}`);
+    const sample = newId();
+    check(
+      'id generator',
+      randomSource() !== 'math' && /^[0-9a-f-]{36}$/.test(sample),
+      `${randomSource()} · ${sample}`,
+    );
 
     const previousMarker = await loadDraft(db, { ...key, sessionId: MARKER });
     const previousOutbox = await loadOutboxEntry(db, 'selftest-sent');
