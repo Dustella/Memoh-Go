@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import capturedHistory from '../../../contracts/fixtures/captured/markdown-turn.history.json';
 import history from '../../../contracts/fixtures/history-page.json';
 import type { Turn } from '../../core/conversation/types';
-import { historyRows, turnRows } from './turnRows';
+import { composeRows, historyRows, turnRows } from './turnRows';
 
 describe('turnRows', () => {
   it('maps a real captured turn to a user bubble and one markdown row', () => {
@@ -47,5 +47,58 @@ describe('turnRows', () => {
     const rows = historyRows((history as { items: Turn[] }).items);
     expect(rows.filter((r) => r.kind === 'user')).toHaveLength(2);
     expect(rows.some((r) => r.kind === 'tool')).toBe(true);
+  });
+});
+
+
+describe('composeRows', () => {
+  const persisted: Turn[] = [
+    { turn_id: 't1', turn_position: 1, role: 'user', text: 'q1', timestamp: 'x', id: 'm1' },
+    { turn_id: 't1', turn_position: 1, role: 'assistant', messages: [{ id: 0, type: 'text', content: 'a1' }], timestamp: 'x', id: 'm2' },
+  ];
+  const run = (status: string, turnId = 't2') => ({
+    run_id: 'r2',
+    turn_id: turnId,
+    status,
+    started_at: 's',
+    updated_at: 'u',
+    messages: [{ id: 0, type: 'text' as const, content: 'streaming' }],
+    user_turns: [{ turn_id: turnId, role: 'user' as const, text: 'q2', timestamp: 'x' }],
+  });
+  const kinds = (rows: ReturnType<typeof composeRows>) => rows.map((r) => r.kind);
+
+  it('appends the running turn with a working indicator', () => {
+    const rows = composeRows({ history: persisted, run: run('running'), pending: [] });
+    expect(kinds(rows)).toEqual(['user', 'markdown', 'user', 'markdown', 'working']);
+  });
+
+  it('never shows a turn twice once history has it', () => {
+    const rows = composeRows({
+      history: persisted,
+      run: run('completed', 't1'),
+      pending: [{ invocationId: 'i', text: 'q1', turnId: 't1', state: 'sending' }],
+    });
+    expect(kinds(rows)).toEqual(['user', 'markdown']);
+  });
+
+  it('shows unattached sends as pending bubbles and merges an accepted one into its live turn', () => {
+    const rows = composeRows({
+      history: persisted,
+      run: run('running'),
+      pending: [
+        { invocationId: 'a', text: 'q2', turnId: 't2', state: 'sending' },
+        { invocationId: 'b', text: 'next', state: 'unsure' },
+      ],
+    });
+    expect(kinds(rows)).toEqual(['user', 'markdown', 'user', 'markdown', 'working', 'pending']);
+    expect(rows.at(-1)).toMatchObject({ text: 'next', state: 'unsure' });
+  });
+
+  it('marks stopped and failed runs', () => {
+    expect(composeRows({ history: [], run: run('aborted'), pending: [] }).at(-1)).toMatchObject({ kind: 'notice', text: '已停止' });
+    expect(composeRows({ history: [], run: { ...run('errored'), error: 'model down' }, pending: [] }).at(-1)).toMatchObject({
+      tone: 'error',
+      text: 'model down',
+    });
   });
 });

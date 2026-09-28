@@ -161,6 +161,16 @@ export class MemohClient {
     return { items: body.items ?? [], nextCursor: body.next_cursor ?? '' };
   }
 
+  /** Not idempotent on the server (contracts/u5): callers must reconcile a lost response. */
+  async createSession(token: string, botId: string, body: { title?: string } = {}): Promise<SessionSummary> {
+    return (
+      await this.request<SessionSummary>('POST', `/bots/${encodeURIComponent(botId)}/sessions`, {
+        token,
+        body: { channel_type: 'local', ...body },
+      })
+    ).body;
+  }
+
   /** Persisted turns, old → new; the page starts on a turn boundary. */
   async listMessages(
     token: string,

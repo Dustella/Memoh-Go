@@ -121,11 +121,19 @@ function renderBlockToken(token: Token, colors: Palette, key: string, bodyStyle:
     case 'list': {
       const list = token as Tokens.List;
       const start = typeof list.start === 'number' ? list.start : 1;
+      // Chat rows split a long list into one block per item, so the marker
+      // column can't depend on this block's items or 9./10. would misalign.
+      // Ordered lists get one width that fits "99."; only 100+ grows it.
+      const widestLabel = list.ordered ? `${start + list.items.length - 1}.`.length : 1;
+      const markerWidth = list.ordered ? Math.max(34, widestLabel * 10 + 4) : styles.bullet.width;
       return (
         <View key={key} style={styles.list}>
           {list.items.map((item, index) => (
             <View key={`${key}.${index}`} style={styles.listItem}>
-              <Text style={[bodyStyle, styles.bullet, { color: colors.textMuted }]}>
+              <Text
+                numberOfLines={1}
+                style={[bodyStyle, styles.bullet, { width: markerWidth, color: colors.textMuted }]}
+              >
                 {list.ordered ? `${start + index}.` : '•'}
               </Text>
               <View style={styles.listBody}>

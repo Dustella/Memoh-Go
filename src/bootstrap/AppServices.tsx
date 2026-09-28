@@ -1,18 +1,28 @@
 import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { AppState } from 'react-native';
 
 import { ConnectionManager, type AccessState } from '../application/access/connectService';
 import { ConversationSync } from '../application/conversation/conversationSync';
+import { RuntimeHub } from '../application/conversation/runtimeHub';
 import { newId } from '../core/ids';
 import { openExpoDatabase } from '../data/local/expoDatabase';
+import { markOutboxColdStart } from '../data/local/outboxStore';
 import type { SqlDatabase } from '../data/local/sql';
 import type { FetchFn } from '../data/remote/memohClient';
 import { installPlatformCrypto } from '../platform/installPlatformCrypto';
+import { nativeSocketFactory } from '../platform/nativeSocketFactory';
 import { secureCredentialVault } from '../platform/secureCredentialVault';
 
 installPlatformCrypto();
 
 /** Everything the screens use, built once per process. */
-export type AppServices = Readonly<{ db: SqlDatabase; access: ConnectionManager; sync: ConversationSync }>;
+export type AppServices = Readonly<{
+  db: SqlDatabase;
+  access: ConnectionManager;
+  sync: ConversationSync;
+  hub: RuntimeHub;
+  fetchFn: FetchFn;
+}>;
 
 const DATABASE_FILE = 'memoh-go.db';
 
@@ -27,7 +37,16 @@ async function createAppServices(): Promise<AppServices> {
     newId,
   });
   await access.restore();
-  return { db, access, sync: new ConversationSync(db, access, fetchFn, Date.now) };
+  // Sends interrupted by the last process are unconfirmed, never silently resent.
+  await markOutboxColdStart(db, Date.now());
+  const hub = new RuntimeHub(access, nativeSocketFactory);
+  access.subscribe(() => {
+    if (access.state.kind !== 'signed_in') hub.closeAll();
+  });
+  AppState.addEventListener('change', (next) => {
+    if (next === 'active') hub.wake();
+  });
+  return { db, access, sync: new ConversationSync(db, access, fetchFn, Date.now), hub, fetchFn };
 }
 
 let servicesPromise: Promise<AppServices> | undefined;

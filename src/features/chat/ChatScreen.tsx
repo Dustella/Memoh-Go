@@ -1,15 +1,36 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LegendList } from '@legendapp/list/react-native';
-import { memo, useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import type { LiveSession } from '../../application/conversation/liveSession';
+import { isRunActive } from '../../core/conversation/types';
+import type { OutboxEntry } from '../../core/operations/outbox';
 import { MarkdownBlockView } from '../../ui/markdown/MarkdownBlockView';
 import { fontSize, monoFont, radius, spacing, useTheme } from '../../ui/theme';
-import { historyRows, type ChatRow } from './turnRows';
+import { composeRows, type ChatRow, type PendingSend } from './turnRows';
 import { useHistory } from './useConversation';
+import { useDraft, useLiveSession } from './useLiveSession';
 
 const TOOL_LABEL = { running: '运行中', done: '已完成', failed: '失败', awaiting: '等待确认' } as const;
+const WORKING_LABEL: Record<string, string> = {
+  admitting: '准备中',
+  running: '正在回复',
+  waiting_decision: '等待你的确认',
+  aborting: '正在停止',
+  finishing: '收尾中',
+};
 
 function Reasoning({ text, durationMs }: { text: string; durationMs?: number }) {
   const { colors } = useTheme();
@@ -29,7 +50,34 @@ function Reasoning({ text, durationMs }: { text: string; durationMs?: number }) 
   );
 }
 
-const Row = memo(function Row({ row }: { row: ChatRow }) {
+function Working({ status }: { status: string }) {
+  const { colors } = useTheme();
+  const pulse = useRef(new Animated.Value(0.35)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.35, duration: 600, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+  return (
+    <View style={[styles.assistant, styles.chipRow]} accessibilityLiveRegion="polite">
+      <Animated.View style={[styles.dot, { backgroundColor: colors.accent, opacity: pulse }]} />
+      <Text style={[styles.chipText, { color: colors.textMuted }]}>{WORKING_LABEL[status] ?? '处理中'}</Text>
+    </View>
+  );
+}
+
+type RowActions = Readonly<{
+  resend: (invocationId: string) => void;
+  discard: (invocationId: string) => void;
+  retry: (invocationId: string) => void;
+}>;
+
+const Row = memo(function Row({ row, actions }: { row: ChatRow; actions: RowActions }) {
   const { colors } = useTheme();
   const top = 'first' in row && row.first ? styles.turnStart : null;
   switch (row.kind) {
@@ -52,6 +100,37 @@ const Row = memo(function Row({ row }: { row: ChatRow }) {
           </View>
         </View>
       );
+    case 'pending': {
+      const tone = row.state === 'failed' ? colors.danger : row.state === 'unsure' ? colors.warning : colors.textSubtle;
+      return (
+        <View style={styles.userRow}>
+          <View style={[styles.userBubble, { backgroundColor: colors.userBubble, opacity: row.state === 'sending' ? 0.7 : 1 }]}>
+            <Text selectable style={[styles.userText, { color: colors.userBubbleText }]}>{row.text}</Text>
+          </View>
+          <View style={styles.pendingMeta}>
+            {row.state === 'sending' ? (
+              <Text style={[styles.metaText, { color: tone }]}>发送中…</Text>
+            ) : (
+              <>
+                <Text style={[styles.metaText, { color: tone }]}>{row.state === 'failed' ? '发送失败' : '可能未送达'}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() => (row.state === 'failed' ? actions.retry : actions.resend)(row.invocationId)}
+                >
+                  <Text style={[styles.metaAction, { color: colors.accent }]}>重发</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" hitSlop={8} onPress={() => actions.discard(row.invocationId)}>
+                  <Text style={[styles.metaAction, { color: colors.textMuted }]}>{row.state === 'failed' ? '删除' : '放弃'}</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        </View>
+      );
+    }
+    case 'working':
+      return <Working status={row.status} />;
     case 'markdown':
       return (
         <View style={[styles.assistant, top]}>
@@ -94,32 +173,107 @@ const Row = memo(function Row({ row }: { row: ChatRow }) {
   }
 });
 
-export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: string }) {
+function toPending(entry: OutboxEntry): PendingSend {
+  const state = entry.status === 'failed' ? 'failed' : entry.status === 'unconfirmed' && entry.needsUser ? 'unsure' : 'sending';
+  return { invocationId: entry.invocationId, text: entry.payload.text, turnId: entry.turnId, state };
+}
+
+function Composer({ live, botId, sessionId, running }: { live: LiveSession; botId: string; sessionId: string; running: boolean }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const draft = useDraft(botId, sessionId);
+  const canSend = draft.text.trim().length > 0;
+
+  const send = () => {
+    if (!canSend) return;
+    const text = draft.text;
+    draft.clear();
+    void live.send(text);
+  };
+
+  return (
+    <View
+      style={[
+        styles.composer,
+        { borderTopColor: colors.border, backgroundColor: colors.surface, paddingBottom: Math.max(insets.bottom, spacing.sm) },
+      ]}
+    >
+      <TextInput
+        value={draft.text}
+        onChangeText={draft.update}
+        editable={draft.ready}
+        placeholder="发消息…"
+        placeholderTextColor={colors.textSubtle}
+        multiline
+        accessibilityLabel="消息输入框"
+        style={[styles.input, { color: colors.text, backgroundColor: colors.surfaceMuted }]}
+      />
+      {running && !canSend ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="停止回复"
+          onPress={() => live.abort()}
+          style={[styles.sendButton, { backgroundColor: colors.text }]}
+        >
+          <Ionicons name="stop" size={16} color={colors.background} />
+        </Pressable>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="发送"
+          disabled={!canSend}
+          onPress={send}
+          style={[styles.sendButton, { backgroundColor: canSend ? colors.accent : colors.surfaceMuted }]}
+        >
+          <Ionicons name="arrow-up" size={18} color={canSend ? colors.accentText : colors.textSubtle} />
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: string }) {
+  const { colors } = useTheme();
   const history = useHistory(botId, sessionId);
+  const { live, snapshot } = useLiveSession(botId, sessionId);
+  const running = Boolean(snapshot.run && isRunActive(snapshot.run.status));
+
   const rows = useMemo(() => {
-    const body = historyRows(history.turns);
+    const pending = [...snapshot.pending, ...snapshot.failed].map(toPending);
+    const body = composeRows({ history: history.turns, run: snapshot.run, pending });
     if (body.length === 0) return body;
     const state = !history.checkpoint?.hasOlder ? 'beginning' : history.loadingOlder ? 'loading' : 'more';
     return [{ kind: 'edge', key: 'edge', turnId: '', state } as const, ...body];
-  }, [history.turns, history.checkpoint?.hasOlder, history.loadingOlder]);
-  const renderItem = useCallback(({ item }: { item: ChatRow }) => <Row row={item} />, []);
+  }, [history.turns, history.checkpoint?.hasOlder, history.loadingOlder, snapshot]);
 
+  const actions = useMemo<RowActions>(
+    () => ({
+      resend: (id) => void live.confirmResend(id),
+      discard: (id) => void live.discard(id),
+      retry: (id) => void live.retryFailed(id),
+    }),
+    [live],
+  );
+  const renderItem = useCallback(({ item }: { item: ChatRow }) => <Row row={item} actions={actions} />, [actions]);
+
+  const offline = snapshot.socket !== 'open' || history.error;
   return (
-    <View style={[styles.flex, { backgroundColor: colors.background }]}>
-      {history.error ? (
+    <KeyboardAvoidingView
+      style={[styles.flex, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      {offline && history.loaded ? (
         <View style={[styles.banner, { backgroundColor: colors.surfaceMuted }]}>
-          <Ionicons name="cloud-offline-outline" size={14} color={colors.warning} />
+          <Ionicons name={snapshot.socket === 'connecting' ? 'sync-outline' : 'cloud-offline-outline'} size={14} color={colors.warning} />
           <Text numberOfLines={2} style={[styles.bannerText, { color: colors.warning }]}>
-            无法同步，显示的是本机保存的内容。
+            {snapshot.socket === 'connecting' ? '正在连接…' : '未连接，显示的是本机保存的内容。消息会在连接后发送。'}
           </Text>
         </View>
       ) : null}
 
       {history.loaded && rows.length === 0 && !history.syncing ? (
         <View style={styles.center}>
-          <Text style={[styles.emptyText, { color: colors.textMuted }]}>这个会话还没有消息。</Text>
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>还没有消息，说点什么吧。</Text>
         </View>
       ) : !history.loaded || (rows.length === 0 && history.syncing) ? (
         <View style={styles.center}>
@@ -130,6 +284,7 @@ export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: str
           data={rows}
           keyExtractor={(row) => row.key}
           renderItem={renderItem}
+          extraData={actions}
           estimatedItemSize={80}
           recycleItems
           alignItemsAtEnd
@@ -138,22 +293,13 @@ export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: str
           maintainVisibleContentPosition
           onStartReached={() => void history.loadOlder()}
           onStartReachedThreshold={0.5}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: spacing.lg }}
         />
       )}
 
-      {/* Placeholder composer (read-only milestone): sending arrives with the Outbox worker. */}
-      <View
-        style={[
-          styles.composer,
-          { borderTopColor: colors.border, backgroundColor: colors.surface, paddingBottom: insets.bottom + spacing.sm },
-        ]}
-      >
-        <View style={[styles.fakeInput, { backgroundColor: colors.surfaceMuted }]}>
-          <Text style={[styles.fakeInputText, { color: colors.textSubtle }]}>只读预览 · 发送功能即将开放</Text>
-        </View>
-      </View>
-    </View>
+      <Composer live={live} botId={botId} sessionId={sessionId} running={running} />
+    </KeyboardAvoidingView>
   );
 }
 
@@ -175,10 +321,14 @@ const styles = StyleSheet.create({
   },
   userText: { fontSize: fontSize.body, lineHeight: 23 },
   userMeta: { fontSize: fontSize.caption, marginTop: spacing.xs },
+  pendingMeta: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.xs },
+  metaText: { fontSize: fontSize.caption },
+  metaAction: { fontSize: fontSize.caption, fontWeight: '600' },
   assistant: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   turnStart: { paddingTop: spacing.lg },
   chipRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingVertical: 2 },
   chipText: { fontSize: fontSize.small },
+  dot: { width: 8, height: 8, borderRadius: 4 },
   reasoning: { fontSize: fontSize.small, lineHeight: 20, borderLeftWidth: 2, paddingLeft: spacing.md, marginTop: spacing.xs },
   tool: {
     flexDirection: 'row',
@@ -192,7 +342,23 @@ const styles = StyleSheet.create({
   },
   toolName: { fontSize: fontSize.small, flexShrink: 1 },
   notice: { fontSize: fontSize.small, lineHeight: 20 },
-  composer: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-  fakeInput: { borderRadius: radius.pill, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
-  fakeInputText: { fontSize: fontSize.body },
+  composer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  input: {
+    flex: 1,
+    maxHeight: 140,
+    minHeight: 44,
+    borderRadius: 22,
+    paddingHorizontal: spacing.lg,
+    paddingTop: 11,
+    paddingBottom: 11,
+    fontSize: fontSize.body,
+  },
+  sendButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
 });

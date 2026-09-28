@@ -1,4 +1,4 @@
-import type { Block, Turn } from '../../core/conversation/types';
+import { isRunActive, type Block, type RunView, type Turn } from '../../core/conversation/types';
 import { splitBlocks } from '../../ui/markdown/blocks';
 
 /**
@@ -8,6 +8,8 @@ import { splitBlocks } from '../../ui/markdown/blocks';
  */
 export type ChatRow =
   | Readonly<{ kind: 'edge'; key: string; turnId: ''; state: 'beginning' | 'loading' | 'more' }>
+  | Readonly<{ kind: 'working'; key: string; turnId: string; status: string }>
+  | Readonly<{ kind: 'pending'; key: string; turnId: ''; invocationId: string; text: string; state: 'sending' | 'unsure' | 'failed' }>
   | Readonly<{ kind: 'user'; key: string; turnId: string; text: string; attachments: number }>
   | Readonly<{ kind: 'markdown'; key: string; turnId: string; source: string; first: boolean }>
   | Readonly<{ kind: 'reasoning'; key: string; turnId: string; text: string; durationMs?: number; first: boolean }>
@@ -83,4 +85,48 @@ export function turnRows(turn: Turn): ChatRow[] {
 
 export function historyRows(turns: readonly Turn[]): ChatRow[] {
   return turns.flatMap(turnRows);
+}
+
+export type PendingSend = Readonly<{
+  invocationId: string;
+  text: string;
+  turnId?: string;
+  /** sending: queued/sent · unsure: lost ack, user must decide · failed: rejected. */
+  state: 'sending' | 'unsure' | 'failed';
+}>;
+
+export type ComposeInput = Readonly<{
+  history: readonly Turn[];
+  run: RunView | null;
+  pending: readonly PendingSend[];
+}>;
+
+/**
+ * History, then the live run if its turn is not persisted yet, then sends
+ * the server has not attached to any visible turn. A turn is never shown
+ * twice: once history contains it, the live copy and the pending bubble go.
+ */
+export function composeRows({ history, run, pending }: ComposeInput): ChatRow[] {
+  const rows = historyRows(history);
+  const persisted = new Set(history.map((t) => t.turn_id));
+  const liveTurn = run && !persisted.has(run.turn_id) ? run : null;
+
+  if (liveTurn) {
+    const mine = pending.find((p) => p.turnId === liveTurn.turn_id);
+    const userTurn = liveTurn.user_turns?.find((t) => t.turn_id === liveTurn.turn_id) ?? liveTurn.user_turns?.[0];
+    const text = userTurn?.text ?? mine?.text;
+    if (text !== undefined) rows.push({ kind: 'user', key: `${liveTurn.turn_id}:u`, turnId: liveTurn.turn_id, text, attachments: 0 });
+    rows.push(...turnRows({ turn_id: liveTurn.turn_id, role: 'assistant', timestamp: '', messages: liveTurn.messages }));
+    if (isRunActive(liveTurn.status)) rows.push({ kind: 'working', key: `${liveTurn.turn_id}:w`, turnId: liveTurn.turn_id, status: liveTurn.status });
+    else if (liveTurn.status === 'aborted') rows.push({ kind: 'notice', key: `${liveTurn.turn_id}:x`, turnId: liveTurn.turn_id, text: '已停止', tone: 'info', first: false });
+    else if (liveTurn.status === 'errored' || liveTurn.status === 'lost') {
+      rows.push({ kind: 'notice', key: `${liveTurn.turn_id}:x`, turnId: liveTurn.turn_id, text: liveTurn.error || '这一轮没有完成', tone: 'error', first: false });
+    }
+  }
+
+  for (const p of pending) {
+    if (p.turnId && (persisted.has(p.turnId) || p.turnId === liveTurn?.turn_id)) continue;
+    rows.push({ kind: 'pending', key: `p:${p.invocationId}`, turnId: '', invocationId: p.invocationId, text: p.text, state: p.state });
+  }
+  return rows;
 }
