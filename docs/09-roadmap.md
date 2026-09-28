@@ -197,7 +197,7 @@ M0 可安装骨架 ✅
 
 | ID | 契约 | 阻塞 | 现状（来自 `02`） | 未落地时的降级 |
 | --- | --- | --- | --- | --- |
-| U1 | 能力发现 / 版本协商 | M2 | 未见统一 discovery | 按服务端版本号硬编码能力表，未知能力隐藏 |
+| U1 | 能力发现 / 版本协商 | M2 | 未见统一 discovery | 最低支持 v0.17.0（可能上调，见 `contracts/README.md`）；能力按证据逐项探测，未知能力隐藏 |
 | U2 | 移动设备登录与续期 | M2 | `/auth/login`、`/auth/refresh`，无独立 refresh token | 过期后要求重新登录；不在 URL 中放 token |
 | U3 | 历史 / live 边界（committed-through） | M2 | 两条读路径，无显式交接点 | 订阅快照后重拉最近一页历史并按 turn ID 去重 |
 | U4 | 按 invocation 查询准入结果 | M2 | ledger 有 `GetByInvocation`，未暴露 | 同 invocation ID 重发，依赖服务端 fingerprint 幂等 |
