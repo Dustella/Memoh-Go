@@ -149,41 +149,29 @@ UI hierarchy 中包含“首页”，且不再包含：
 - 最终 logcat 未出现 `SplashScreenManager` 缺类、`FATAL EXCEPTION`、`Unable to load script` 或 development client 项目加载错误。
 - Metro 全程保持 `packager-status:running`，没有停止或替换用户的开发服务器。
 
-## 3. 当前下一项
+## 3. 当前状态（2026-09-28 晚）
 
-2026-09-28 补充：
+M1 基本完成，仅差实体机复测：
 
-- 新增模拟器 `Medium_Phone`（Android 15 / API 35，x86_64，`emulator-5554`），通过 `mise run android:emu` 构建 x86_64 并经 localhost + adb reverse 连接 Metro；已确认 `MainActivity` 在前台。模拟器只用于日常开发与回归，不用于性能结论。
-- 中文 IME 复核按用户决定跳过。
-- 总路线图与功能优先级见 `docs/09-roadmap.md`；当前冲刺的第一项是初始化 Git 仓库（PF-01），随后 P0.5。
+- **P0.5** ✅ `contracts/`：WS 协议、U1–U5 各一页、差距总表、derived fixtures。U1–U5 均有客户端降级，M2 不被上游阻塞。
+- **PF-02** ✅ Vitest 5（`npm test`）。`src/core/sync/runtimeStream.ts`（epoch/seq 门）与 `src/core/conversation/applyRunDelta.ts`（移植 Web `applyRunPatch`）用 fixtures 测试。
+- **P0.4** 🟡 模拟器 release 基线完成，暂定 Legend List 3 + `marked` 块级 Markdown，见 `docs/10-render-benchmark.md`。实体机 2206123SC 复测后定稿。
+- **PF-07** ✅ release 构建可用。
+- 隐藏开发路由：`memoh://diagnostics`、`memoh://storage-diagnostics`、`memoh://bench`（release 仅在 `EXPO_PUBLIC_BENCH=1` 构建中可用）。
+- 模拟器 `Medium_Phone`（`emulator-5554`）：`mise run android:emu`，经 localhost + adb reverse 连 Metro。
 
-P0.3 已完成。按当前风险顺序继续：
-
-1. **P0.5 上游移动契约对齐**
-   - 明确 discovery、历史/live 边界、invocation 结果查询、幂等首次建会话和设备登录。
-   - 把已确认能力、缺口、owner 和脱敏 fixtures 写入 `contracts/`。
-2. **P0.4 长文本与流式渲染基准**
-   - 建立 100 增量/秒、长消息、历史前插和阅读锚点恢复的确定性夹具。
-   - 在 release 真机记录基线，再选择列表和 Markdown 实现。
-3. **外部人工复核：中文 IME**
-   - 设备安装中文键盘后，验证候选词上屏、换行、删除、重新聚焦和候选栏遮挡。
-
-每轮修改后继续运行：
+每轮修改后运行：
 
 ```powershell
 npm run typecheck
-npx expo install --check
+npm test
 ```
 
-## 4. 后续实施顺序
+## 4. 下一步
 
-依据 `docs/08-implementation-priorities.md`：
-
-1. P0.5：协议契约对齐。
-2. P0.4：长文本与流式渲染 benchmark。
-3. 有中文 IME 的设备可用时补做 P0.2 人工复核。
-4. P1：可靠聊天纵切，优先实现只读真实会话。
-
+1. 实体机连接后：构建 arm64 release 基准包并运行 `node scripts/run-bench.mjs --serial d611eea3`，定稿列表选择。
+2. M2 需要用户提供独立测试部署（地址 + 测试账号，可做故障注入）。
+3. M2 轨道：SQLite migration 与仓储 → 连接/登录（ID-01～04）→ 只读会话（SS-01/02、CH-01）→ Outbox + 实时投影 → 聊天 UI。
 ## 5. 本轮 Pitfalls
 
 ### 5.1 LAN 地址少了一位数字
@@ -349,6 +337,28 @@ development client 冷启动并下载/执行 Metro bundle 时，`uiautomator dum
 
 当前 `npm audit --omit=dev` 报告 14 个 moderate、0 high、0 critical，均沿 Expo/Router 工具链的传递依赖展开。报告给出的主要自动修复会把 `expo` 从 SDK 57 降到 46，或把 `expo-router` 降到 5.x；这会破坏已经通过真机验证的 SDK 组合。不要执行 `npm audit fix --force`。后续应在 Expo SDK 57 的兼容升级范围内跟踪上游修复，再重新运行 Expo 依赖检查、原生构建和真机恢复测试。
 
+### 5.18 release 构建需要让 Gradle 走本地代理
+
+release 变体首次需要下载 debug 构建没用过的 Maven 构件（Prefab / lint）。Gradle 不读取 npm 的代理设置，直连 443 会无限期挂起，表现为日志停在 `configureCMakeRelWithDebInfo` 或 `lintVitalAnalyzeRelease`、守护进程 CPU 为 0。`jstack` 可见线程卡在 `DownloadAction` 的 socket 读取。解决：
+
+```powershell
+gradlew.bat app:assembleRelease -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7890 -Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=7890 -PreactNativeArchitectures=x86_64
+```
+
+`android/app/build.gradle` 已设置 `lint { checkReleaseBuilds false }`，release 不再跑 lintVital。
+
+### 5.19 安装 release 包会替换模拟器上的开发客户端
+
+两者包名、签名相同。基准测完后恢复开发客户端：
+
+```powershell
+adb -s emulator-5554 install -r android\app\build\outputs\apk\debug\app-debug.apk
+adb -s emulator-5554 reverse tcp:8081 tcp:8081
+```
+
+### 5.20 rolldown 原生绑定需列为 optionalDependencies
+
+Vitest 5 依赖 rolldown。npm 在已有锁文件时会漏装平台绑定（npm/cli#4828），表现为 `Cannot find native binding`。`package.json` 已把 win32/linux/darwin 绑定固定为 optionalDependencies，不要删除。
 ## 6. 快速恢复命令
 
 ### 6.1 确认设备

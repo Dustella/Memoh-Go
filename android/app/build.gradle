@@ -130,6 +130,12 @@ android {
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
     }
+    lint {
+        // Release-time lintVital downloads extra lint artifacts and adds minutes
+        // to every release build; the project gates on TypeScript, unit tests
+        // and device tests instead of Android lint.
+        checkReleaseBuilds false
+    }
 }
 
 // Apply static values from `gradle.properties` to the `android.packagingOptions`

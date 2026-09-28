@@ -1,0 +1,452 @@
+[
+  {
+    "scenario": "stream100",
+    "impl": "flat",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 800,
+    "mountMs": 89,
+    "frames": {
+      "durationMs": 12343,
+      "frames": 677,
+      "fps": 54.8,
+      "droppedPct": 15.4,
+      "p95IntervalMs": 31.4,
+      "longestIntervalMs": 38.7
+    },
+    "latency": {
+      "p50": 51.1,
+      "p95": 66.1,
+      "max": 72,
+      "flushes": 201
+    },
+    "heapMb": {
+      "start": 12,
+      "end": 20
+    },
+    "anchorDriftPx": null,
+    "gfx": {
+      "totalFrames": 118,
+      "jankyPct": 67.8,
+      "p90Ms": 44,
+      "p95Ms": 46
+    }
+  },
+  {
+    "scenario": "stream100",
+    "impl": "flash",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 800,
+    "mountMs": 62,
+    "frames": {
+      "durationMs": 12377,
+      "frames": 666,
+      "fps": 53.8,
+      "droppedPct": 17.8,
+      "p95IntervalMs": 31.5,
+      "longestIntervalMs": 41.7
+    },
+    "latency": {
+      "p50": 53,
+      "p95": 65.6,
+      "max": 73.3,
+      "flushes": 193
+    },
+    "heapMb": {
+      "start": 12,
+      "end": 16
+    },
+    "anchorDriftPx": null,
+    "gfx": {
+      "totalFrames": 554,
+      "jankyPct": 33.94,
+      "p90Ms": 36,
+      "p95Ms": 42
+    }
+  },
+  {
+    "scenario": "stream100",
+    "impl": "legend",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 800,
+    "mountMs": 136,
+    "frames": {
+      "durationMs": 12361,
+      "frames": 664,
+      "fps": 53.7,
+      "droppedPct": 16.6,
+      "p95IntervalMs": 32,
+      "longestIntervalMs": 45.3
+    },
+    "latency": {
+      "p50": 52.2,
+      "p95": 64.8,
+      "max": 76.5,
+      "flushes": 187
+    },
+    "heapMb": {
+      "start": 12,
+      "end": 20
+    },
+    "anchorDriftPx": null,
+    "gfx": {
+      "totalFrames": 362,
+      "jankyPct": 67.13,
+      "p90Ms": 40,
+      "p95Ms": 44
+    }
+  },
+  {
+    "scenario": "burst500",
+    "impl": "flat",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 952,
+    "mountMs": 52,
+    "frames": {
+      "durationMs": 8355,
+      "frames": 468,
+      "fps": 56,
+      "droppedPct": 16.6,
+      "p95IntervalMs": 31.3,
+      "longestIntervalMs": 36.3
+    },
+    "latency": {
+      "p50": 51.5,
+      "p95": 65.5,
+      "max": 68.7,
+      "flushes": 130
+    },
+    "heapMb": {
+      "start": 12,
+      "end": 16
+    },
+    "anchorDriftPx": null,
+    "gfx": {
+      "totalFrames": 167,
+      "jankyPct": 75.45,
+      "p90Ms": 44,
+      "p95Ms": 46
+    }
+  },
+  {
+    "scenario": "burst500",
+    "impl": "flash",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 952,
+    "mountMs": 65,
+    "frames": {
+      "durationMs": 8363,
+      "frames": 453,
+      "fps": 54.2,
+      "droppedPct": 16.5,
+      "p95IntervalMs": 31.7,
+      "longestIntervalMs": 37
+    },
+    "latency": {
+      "p50": 50.9,
+      "p95": 63.9,
+      "max": 68,
+      "flushes": 131
+    },
+    "heapMb": {
+      "start": 12,
+      "end": 16
+    },
+    "anchorDriftPx": null,
+    "gfx": {
+      "totalFrames": 174,
+      "jankyPct": 67.24,
+      "p90Ms": 44,
+      "p95Ms": 46
+    }
+  },
+  {
+    "scenario": "burst500",
+    "impl": "legend",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 952,
+    "mountMs": 97,
+    "frames": {
+      "durationMs": 8367,
+      "frames": 432,
+      "fps": 51.6,
+      "droppedPct": 22.3,
+      "p95IntervalMs": 33.1,
+      "longestIntervalMs": 44.4
+    },
+    "latency": {
+      "p50": 54.2,
+      "p95": 67.7,
+      "max": 76.3,
+      "flushes": 121
+    },
+    "heapMb": {
+      "start": 12,
+      "end": 20
+    },
+    "anchorDriftPx": null,
+    "gfx": {
+      "totalFrames": 315,
+      "jankyPct": 49.21,
+      "p90Ms": 40,
+      "p95Ms": 44
+    }
+  },
+  {
+    "scenario": "history10k",
+    "impl": "flat",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 15408,
+    "mountMs": 84,
+    "frames": {
+      "durationMs": 10710,
+      "frames": 568,
+      "fps": 53,
+      "droppedPct": 19,
+      "p95IntervalMs": 32.4,
+      "longestIntervalMs": 45.2
+    },
+    "latency": null,
+    "heapMb": {
+      "start": 12,
+      "end": 24
+    },
+    "anchorDriftPx": null,
+    "gfx": {
+      "totalFrames": 409,
+      "jankyPct": 20.29,
+      "p90Ms": 36,
+      "p95Ms": 40
+    }
+  },
+  {
+    "scenario": "history10k",
+    "impl": "flash",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 15408,
+    "mountMs": 137,
+    "frames": {
+      "durationMs": 12134,
+      "frames": 657,
+      "fps": 54.1,
+      "droppedPct": 14.8,
+      "p95IntervalMs": 31.5,
+      "longestIntervalMs": 57.4
+    },
+    "latency": null,
+    "heapMb": {
+      "start": 12,
+      "end": 20
+    },
+    "anchorDriftPx": null,
+    "gfx": {
+      "totalFrames": 196,
+      "jankyPct": 40.82,
+      "p90Ms": 40,
+      "p95Ms": 46
+    }
+  },
+  {
+    "scenario": "history10k",
+    "impl": "legend",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 15408,
+    "mountMs": 177,
+    "frames": {
+      "durationMs": 12103,
+      "frames": 645,
+      "fps": 53.3,
+      "droppedPct": 18.6,
+      "p95IntervalMs": 31.8,
+      "longestIntervalMs": 42.6
+    },
+    "latency": null,
+    "heapMb": {
+      "start": 12,
+      "end": 24
+    },
+    "anchorDriftPx": null,
+    "gfx": {
+      "totalFrames": 662,
+      "jankyPct": 14.5,
+      "p90Ms": 36,
+      "p95Ms": 38
+    }
+  },
+  {
+    "scenario": "huge100k",
+    "impl": "flat",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 862,
+    "mountMs": 84,
+    "frames": {
+      "durationMs": 9173,
+      "frames": 487,
+      "fps": 53.1,
+      "droppedPct": 19.6,
+      "p95IntervalMs": 32.1,
+      "longestIntervalMs": 44.1
+    },
+    "latency": null,
+    "heapMb": {
+      "start": 12,
+      "end": 20
+    },
+    "anchorDriftPx": null,
+    "gfx": {
+      "totalFrames": 361,
+      "jankyPct": 24.38,
+      "p90Ms": 36,
+      "p95Ms": 40
+    }
+  },
+  {
+    "scenario": "huge100k",
+    "impl": "flash",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 862,
+    "mountMs": 77,
+    "frames": {
+      "durationMs": 12139,
+      "frames": 670,
+      "fps": 55.2,
+      "droppedPct": 14.8,
+      "p95IntervalMs": 31.3,
+      "longestIntervalMs": 49.8
+    },
+    "latency": null,
+    "heapMb": {
+      "start": 12,
+      "end": 16
+    },
+    "anchorDriftPx": null,
+    "gfx": {
+      "totalFrames": 211,
+      "jankyPct": 34.6,
+      "p90Ms": 38,
+      "p95Ms": 42
+    }
+  },
+  {
+    "scenario": "huge100k",
+    "impl": "legend",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 862,
+    "mountMs": 120,
+    "frames": {
+      "durationMs": 12144,
+      "frames": 641,
+      "fps": 52.8,
+      "droppedPct": 18.8,
+      "p95IntervalMs": 32.4,
+      "longestIntervalMs": 45.5
+    },
+    "latency": null,
+    "heapMb": {
+      "start": 12,
+      "end": 20
+    },
+    "anchorDriftPx": null,
+    "gfx": {
+      "totalFrames": 659,
+      "jankyPct": 14.87,
+      "p90Ms": 36,
+      "p95Ms": 40
+    }
+  },
+  {
+    "scenario": "prepend",
+    "impl": "flat",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 2755,
+    "mountMs": 90,
+    "frames": {
+      "durationMs": 421,
+      "frames": 18,
+      "fps": 42.8,
+      "droppedPct": 16,
+      "p95IntervalMs": 47,
+      "longestIntervalMs": 47
+    },
+    "latency": null,
+    "heapMb": {
+      "start": 12,
+      "end": 16
+    },
+    "anchorDriftPx": -1,
+    "gfx": {
+      "totalFrames": 77,
+      "jankyPct": 41.56,
+      "p90Ms": 46,
+      "p95Ms": 53
+    }
+  },
+  {
+    "scenario": "prepend",
+    "impl": "flash",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 3270,
+    "mountMs": 107,
+    "frames": {
+      "durationMs": 2263,
+      "frames": 109,
+      "fps": 48.2,
+      "droppedPct": 22.1,
+      "p95IntervalMs": 41.5,
+      "longestIntervalMs": 57
+    },
+    "latency": null,
+    "heapMb": {
+      "start": 12,
+      "end": 16
+    },
+    "anchorDriftPx": 0,
+    "gfx": {
+      "totalFrames": 69,
+      "jankyPct": 24.64,
+      "p90Ms": 46,
+      "p95Ms": 48
+    }
+  },
+  {
+    "scenario": "prepend",
+    "impl": "legend",
+    "dev": false,
+    "device": "Android SDK built for x86_64 / Android 15",
+    "rows": 3270,
+    "mountMs": 103,
+    "frames": {
+      "durationMs": 2011,
+      "frames": 113,
+      "fps": 56.2,
+      "droppedPct": 14,
+      "p95IntervalMs": 30.9,
+      "longestIntervalMs": 31.3
+    },
+    "latency": null,
+    "heapMb": {
+      "start": 12,
+      "end": 16
+    },
+    "anchorDriftPx": 1.1,
+    "gfx": {
+      "totalFrames": 58,
+      "jankyPct": 25.86,
+      "p90Ms": 34,
+      "p95Ms": 40
+    }
+  }
+]
