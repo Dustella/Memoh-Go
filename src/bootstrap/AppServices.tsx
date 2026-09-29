@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 
 import { ConnectionManager, type AccessState } from '../application/access/connectService';
 import { ConversationSync } from '../application/conversation/conversationSync';
+import { HomeService } from '../application/conversation/homeService';
 import { LiveSessionPool, OutboxPump } from '../application/conversation/livePool';
 import { RuntimeHub } from '../application/conversation/runtimeHub';
 import { SessionCreator } from '../application/conversation/sessionCreator';
@@ -27,6 +28,7 @@ export type AppServices = Readonly<{
   fetchFn: FetchFn;
   creator: SessionCreator;
   pool: LiveSessionPool;
+  home: HomeService;
   log: Logger;
 }>;
 
@@ -63,6 +65,7 @@ async function createAppServices(): Promise<AppServices> {
   const creator = new SessionCreator({ db, access, fetchFn, now: Date.now, newId });
   const pool = new LiveSessionPool({ db, access, sync, hub, fetchFn, now: Date.now, newId, log });
   const pump = new OutboxPump({ db, access, sync, hub, fetchFn, now: Date.now, newId, log }, pool);
+  const home = new HomeService({ db, access, sync, pool, now: Date.now, log });
   let lastAccess = access.state.kind;
   access.subscribe(() => {
     if (access.state.kind !== lastAccess) {
@@ -74,6 +77,7 @@ async function createAppServices(): Promise<AppServices> {
       lastAccess = access.state.kind;
     }
     if (access.state.kind !== 'signed_in') {
+      home.deactivate();
       pump.stop();
       pool.stopAll();
       hub.closeAll();
@@ -94,7 +98,7 @@ async function createAppServices(): Promise<AppServices> {
   });
   void creator.resume();
   void pump.kick();
-  return { db, access, sync, hub, fetchFn, creator, pool, log };
+  return { db, access, sync, hub, fetchFn, creator, pool, home, log };
 }
 
 let servicesPromise: Promise<AppServices> | undefined;

@@ -115,6 +115,7 @@ const SCOPED_TABLES = [
   'outbox',
   'session_creations',
   'ui_state',
+  'session_seen',
 ] as const;
 
 /**

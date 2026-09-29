@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
 import { useAccessState, useServices } from '../../bootstrap/AppServices';
+import { markSessionSeen } from '../../data/local/homeStore';
 import {
   clearUiStateIf,
   loadReadingAnchor,
@@ -109,4 +110,26 @@ export function useRestoreLastPage() {
       }
     });
   }, [db, scope, pathname]);
+}
+
+
+/**
+ * Record that the user looked at this session (home "new result" badges):
+ * when it opens, while it stays open and the app backgrounds, and when it closes.
+ */
+export function useMarkSeen(botId: string, sessionId: string) {
+  const { db } = useServices();
+  const scope = useScope();
+  useEffect(() => {
+    if (!scope) return;
+    const mark = () => void markSessionSeen(db, scope, botId, sessionId, Date.now());
+    mark();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active') mark();
+    });
+    return () => {
+      sub.remove();
+      mark();
+    };
+  }, [db, scope, botId, sessionId]);
 }

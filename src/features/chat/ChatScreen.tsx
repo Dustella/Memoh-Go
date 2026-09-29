@@ -23,7 +23,7 @@ import { QuestionCard, ToolRow, type DecisionActions } from './components/Decisi
 import { composeRows, copyChoices, type ChatRow, type ControlView, type CopyChoice, type PendingSend } from './turnRows';
 import { useHistory } from './useConversation';
 import { useLiveSession } from './useLiveSession';
-import { useReadingAnchor, useRememberChat } from './usePagePersistence';
+import { useMarkSeen, useReadingAnchor, useRememberChat } from './usePagePersistence';
 
 /** Within this distance of the end the reader counts as "at the newest message". */
 const AT_BOTTOM_SLACK_PX = 80;
@@ -202,7 +202,7 @@ function toPending(entry: OutboxEntry): PendingSend {
   return { invocationId: entry.invocationId, text: entry.payload.text, turnId: entry.turnId, state };
 }
 
-export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: string }) {
+export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: string; sessionId: string; focusLatest?: boolean }) {
   const { colors } = useTheme();
   const history = useHistory(botId, sessionId);
   const { live, snapshot } = useLiveSession(botId, sessionId);
@@ -242,13 +242,15 @@ export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: str
   const renderItem = useCallback(({ item }: { item: ChatRow }) => <Row row={item} actions={actions} />, [actions]);
 
   useRememberChat(botId, sessionId);
+  useMarkSeen(botId, sessionId);
   const { anchor, update: saveAnchor } = useReadingAnchor(botId, sessionId);
   const listRef = useRef<LegendListRef>(null);
 
   // Decided once, when the list first mounts: later rows must not move the reader.
+  // Opened from a home "needs you" item: the decision is at the newest message.
   const initialScroll = useRef<{ initialScrollAtEnd: true } | { initialScrollIndex: { index: number; viewOffset: number } } | null>(null);
   if (initialScroll.current === null && anchor !== undefined && history.loaded && rows.length > 0) {
-    const index = anchor && !anchor.atBottom ? rows.findIndex((r) => r.key === anchor.rowKey) : -1;
+    const index = anchor && !anchor.atBottom && !focusLatest ? rows.findIndex((r) => r.key === anchor.rowKey) : -1;
     // An anchor row outside the cached window (or gone) falls back to the newest message.
     initialScroll.current =
       index >= 0 && anchor && !anchor.atBottom

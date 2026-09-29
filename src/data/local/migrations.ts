@@ -180,6 +180,20 @@ export const MIGRATIONS: readonly { version: number; up: string }[] = [
       );
     `,
   },
+  {
+    version: 5,
+    up: `
+      -- When the user last had each session open on this device (home "new
+      -- result" badges, core/home/home.ts). Local only; not synced.
+      CREATE TABLE session_seen (
+        scope TEXT NOT NULL,
+        bot_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        seen_at INTEGER NOT NULL,
+        PRIMARY KEY (scope, bot_id, session_id)
+      );
+    `,
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

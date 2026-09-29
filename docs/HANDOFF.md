@@ -402,6 +402,14 @@ Vitest 5 依赖 rolldown。npm 在已有锁文件时会漏装平台绑定（npm/
 
 在根页面按返回会退出到桌面，后续坐标点击会打开别的应用。进入页面用 `am start -d memoh://diagnostics-log` 这类深链；截图用缩放到 1000px 高的脚本，原图 1080×2400 超过多图请求的 2000px 限制。
 
+### 5.25 已关闭 Android 预测式返回
+
+`app.json` 的 `predictiveBackGestureEnabled` 与 Manifest 的 `enableOnBackInvokedCallback` 均为 `false`。开启时 Android 15 上系统返回直接结束 Activity，从任何二级页面返回都会退出应用。以后重新开启前，需确认 react-native-screens / expo-router 已接管 `OnBackInvokedCallback`，并在真机上验证返回。改动后需重新构建原生包。
+
+### 5.26 开发专用模拟数据：`memoh://home-preview`
+
+`src/app/(tabs)/home-preview.tsx` 用固定的模拟会话渲染首页全部分区（等你处理的四种原因、正在运行含“上次状态”、继续、新结果、最近）。开发栈模型不调用工具，真实审批/提问无法产生，只能用它检查外观。release 构建跳转到首页。另有 `memoh://decisions-preview`（审批卡片）同理。
+
 ## 6. 快速恢复命令
 
 ### 6.1 确认设备

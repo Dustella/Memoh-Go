@@ -83,6 +83,13 @@ export default function MainTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="home-preview"
+        options={{
+          href: null,
+          title: '首页预览（模拟数据）',
+        }}
+      />
+      <Tabs.Screen
         name="bench"
         options={{
           href: null,

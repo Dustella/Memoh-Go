@@ -7,7 +7,7 @@ import { loadSessions } from '../../../data/local/conversationStore';
 import { ChatScreen } from '../../../features/chat/ChatScreen';
 
 export default function ChatRoute() {
-  const { botId, sessionId } = useLocalSearchParams<{ botId: string; sessionId: string }>();
+  const { botId, sessionId, focus } = useLocalSearchParams<{ botId: string; sessionId: string; focus?: string }>();
   const { db } = useServices();
   const state = useAccessState();
   const [title, setTitle] = useState('');
@@ -22,7 +22,7 @@ export default function ChatRoute() {
   return (
     <RequireSignIn>
       <Stack.Screen options={{ headerShown: true, title: title || '会话' }} />
-      <ChatScreen botId={botId} sessionId={sessionId} />
+      <ChatScreen botId={botId} sessionId={sessionId} focusLatest={focus === 'latest'} />
     </RequireSignIn>
   );
 }

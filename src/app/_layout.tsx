@@ -8,6 +8,9 @@ import { StyleSheet, Text, View } from 'react-native';
 import { AppServicesProvider } from '../bootstrap/AppServices';
 import { fontSize, navigationColors, spacing, useTheme } from '../ui/theme';
 
+// A deep link (memoh://chat/…, a notification) lands on top of the tabs, so back returns home instead of leaving the app.
+export const unstable_settings = { initialRouteName: '(tabs)' };
+
 function BootFailure({ message }: { message: string }) {
   const { colors } = useTheme();
   return (

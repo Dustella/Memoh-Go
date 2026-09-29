@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "ai.memoh.mobile",
-      "predictiveBackGestureEnabled": true,
+      "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
