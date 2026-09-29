@@ -1,4 +1,5 @@
 import { isRunActive, type RunView } from '../../core/conversation/types';
+import type { Logger } from '../../core/diagnostics/log';
 import { observeRunAccepted } from '../../core/identity/capabilities';
 import type { ScopeKey } from '../../core/identity/scope';
 import { lookupInvocation, type LookupRequest } from '../../core/operations/invocationLookup';
@@ -60,6 +61,8 @@ export type LiveDeps = Readonly<{
   newId: () => string;
   /** Retry cadence for queued sends and recovery steps. */
   tickMs?: number;
+  /** Diagnostics (PF-04); identifiers and states only, never message content. */
+  log?: Logger;
 }>;
 
 const RUNTIME_TYPES = new Set(['runtime_snapshot', 'runtime_delta', 'runtime_dropped']);
@@ -179,6 +182,18 @@ export class LiveSession {
   }
 
   private async persist(entry: OutboxEntry) {
+    const before = this.entries.find((e) => e.invocationId === entry.invocationId);
+    if (before?.status !== entry.status || before?.lastCode !== entry.lastCode) {
+      const level = entry.status === 'failed' ? 'warn' : entry.status === 'unconfirmed' ? 'info' : 'debug';
+      this.deps.log?.log(level, `outbox.${entry.status}`, {
+        session_id: entry.sessionId,
+        invocation_id: entry.invocationId,
+        from: before?.status ?? 'new',
+        attempts: entry.attempts,
+        code: entry.lastCode,
+        needs_user: entry.needsUser,
+      });
+    }
     await saveOutboxEntry(this.deps.db, entry);
     if (entry.status === 'failed') {
       this.entries = this.entries.filter((e) => e.invocationId !== entry.invocationId);
@@ -319,6 +334,7 @@ export class LiveSession {
   private async applyRecovery(invocationId: string, step: Recovery) {
     const entry = this.entries.find((e) => e.invocationId === invocationId);
     if (!entry) return;
+    this.deps.log?.info('outbox.recovery', { session_id: entry.sessionId, invocation_id: invocationId, step: step.kind });
     await this.persist(recover(entry, step, this.deps.now()));
     this.publish();
     void this.work();
@@ -399,6 +415,7 @@ export class LiveSession {
   }
 
   private async handleSocketStatus(status: SocketStatus) {
+    if (status !== this.socketStatus) this.deps.log?.debug('live.socket', { session_id: this.sessionId, status });
     this.socketStatus = status;
     if (status !== 'open') {
       this.stream = awaitSnapshot(this.stream);

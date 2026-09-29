@@ -385,6 +385,23 @@ adb -s emulator-5554 reverse tcp:8081 tcp:8081
 ### 5.20 rolldown 原生绑定需列为 optionalDependencies
 
 Vitest 5 依赖 rolldown。npm 在已有锁文件时会漏装平台绑定（npm/cli#4828），表现为 `Cannot find native binding`。`package.json` 已把 win32/linux/darwin 绑定固定为 optionalDependencies，不要删除。
+
+### 5.21 Android 15 edge-to-edge 下键盘不会自动顶起输入框
+
+`edgeToEdgeEnabled=true` 时 `adjustResize` 不再缩小窗口，`KeyboardAvoidingView` 在导航头下方还会少算头部高度。统一使用 `src/ui/components/KeyboardAware.tsx`（测量窗口内顶部位置作为 offset，双平台 `padding`），Composer 在键盘弹出时去掉底部安全区留白。验证时要先收起键盘再重新聚焦，Fast Refresh 不会触发键盘事件。
+
+### 5.22 新增 expo-clipboard，真机需要重新构建
+
+`expo-clipboard@57.0.2` 是原生模块。模拟器已重装；真机 2206123SC 下次需 `mise run android` 重新构建，否则启动报错。
+
+### 5.23 不要在本仓库运行 `npx prettier`
+
+仓库没有 Prettier 配置，默认规则会改成双引号并重排整个文件。保持现有风格（单引号、宽行）手工编辑。
+
+### 5.24 adb 导航用深链，不要盲点返回键
+
+在根页面按返回会退出到桌面，后续坐标点击会打开别的应用。进入页面用 `am start -d memoh://diagnostics-log` 这类深链；截图用缩放到 1000px 高的脚本，原图 1080×2400 超过多图请求的 2000px 限制。
+
 ## 6. 快速恢复命令
 
 ### 6.1 确认设备

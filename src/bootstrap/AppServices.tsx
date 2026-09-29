@@ -6,6 +6,7 @@ import { ConversationSync } from '../application/conversation/conversationSync';
 import { LiveSessionPool, OutboxPump } from '../application/conversation/livePool';
 import { RuntimeHub } from '../application/conversation/runtimeHub';
 import { SessionCreator } from '../application/conversation/sessionCreator';
+import { createLogger, type Logger } from '../core/diagnostics/log';
 import { newId } from '../core/ids';
 import { openExpoDatabase } from '../data/local/expoDatabase';
 import { markOutboxColdStart } from '../data/local/outboxStore';
@@ -26,11 +27,24 @@ export type AppServices = Readonly<{
   fetchFn: FetchFn;
   creator: SessionCreator;
   pool: LiveSessionPool;
+  log: Logger;
 }>;
+
+/**
+ * The process-wide diagnostics log (PF-04). Created before storage opens so
+ * boot failures and uncaught errors are captured too.
+ */
+export const appLog = createLogger({ capacity: 500 });
+const previousHandler = ErrorUtils.getGlobalHandler();
+ErrorUtils.setGlobalHandler((error, isFatal) => {
+  appLog.error('js.uncaught', { error, fatal: Boolean(isFatal) });
+  previousHandler(error, isFatal);
+});
 
 const DATABASE_FILE = 'memoh-go.db';
 
 async function createAppServices(): Promise<AppServices> {
+  const log = appLog;
   const db = await openExpoDatabase(DATABASE_FILE);
   const fetchFn = fetch as unknown as FetchFn;
   const access = new ConnectionManager({
@@ -41,14 +55,24 @@ async function createAppServices(): Promise<AppServices> {
     newId,
   });
   await access.restore();
+  log.info('app.start', { access: access.state.kind });
   // Sends interrupted by the last process are unconfirmed, never silently resent.
   await markOutboxColdStart(db, Date.now());
   const hub = new RuntimeHub(access, nativeSocketFactory);
   const sync = new ConversationSync(db, access, fetchFn, Date.now);
   const creator = new SessionCreator({ db, access, fetchFn, now: Date.now, newId });
-  const pool = new LiveSessionPool({ db, access, sync, hub, fetchFn, now: Date.now, newId });
-  const pump = new OutboxPump({ db, access, sync, hub, fetchFn, now: Date.now, newId }, pool);
+  const pool = new LiveSessionPool({ db, access, sync, hub, fetchFn, now: Date.now, newId, log });
+  const pump = new OutboxPump({ db, access, sync, hub, fetchFn, now: Date.now, newId, log }, pool);
+  let lastAccess = access.state.kind;
   access.subscribe(() => {
+    if (access.state.kind !== lastAccess) {
+      log.info('access.state', {
+        from: lastAccess,
+        state: access.state.kind,
+        reason: access.state.kind === 'needs_sign_in' ? access.state.reason : undefined,
+      });
+      lastAccess = access.state.kind;
+    }
     if (access.state.kind !== 'signed_in') {
       pump.stop();
       pool.stopAll();
@@ -61,6 +85,7 @@ async function createAppServices(): Promise<AppServices> {
   // A created session's first message is queued: send it even if its screen is closed.
   creator.subscribe(() => void pump.kick());
   AppState.addEventListener('change', (next) => {
+    log.debug('app.state', { state: next });
     if (next === 'active') {
       hub.wake();
       void creator.resume();
@@ -69,7 +94,7 @@ async function createAppServices(): Promise<AppServices> {
   });
   void creator.resume();
   void pump.kick();
-  return { db, access, sync, hub, fetchFn, creator, pool };
+  return { db, access, sync, hub, fetchFn, creator, pool, log };
 }
 
 let servicesPromise: Promise<AppServices> | undefined;
@@ -87,6 +112,7 @@ export function AppServicesProvider({ children, fallback }: { children: ReactNod
       (services) => setState({ kind: 'ready', services }),
       (error: unknown) => {
         servicesPromise = undefined;
+        appLog.error('app.boot_failed', { error });
         setState({ kind: 'failed', error: error instanceof Error ? error : new Error(String(error)) });
       },
     );

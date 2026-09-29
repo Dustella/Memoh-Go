@@ -1,11 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { AppServicesProvider } from '../bootstrap/AppServices';
-import { fontSize, spacing, useTheme } from '../ui/theme';
+import { fontSize, navigationColors, spacing, useTheme } from '../ui/theme';
 
 function BootFailure({ message }: { message: string }) {
   const { colors } = useTheme();
@@ -19,22 +20,31 @@ function BootFailure({ message }: { message: string }) {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(Ionicons.font);
+  const theme = useTheme();
+  // Headers, tab bar and screen backgrounds follow the same tokens as the content (PF-05).
+  const navTheme = useMemo(() => {
+    const base = theme.dark ? DarkTheme : DefaultTheme;
+    return { ...base, dark: theme.dark, colors: { ...base.colors, ...navigationColors(theme.colors) } };
+  }, [theme]);
 
   if (!fontsLoaded && !fontError) {
     return null;
   }
 
   return (
-    <AppServicesProvider fallback={(state) => (state.kind === 'failed' ? <BootFailure message={state.error.message} /> : null)}>
-      <StatusBar style="auto" />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" options={{ title: '会话' }} />
-        <Stack.Screen name="connect" options={{ animation: 'fade' }} />
-        <Stack.Screen name="bot/[botId]" options={{ headerShown: true }} />
-        <Stack.Screen name="chat/[botId]/[sessionId]" options={{ headerShown: true }} />
-        <Stack.Screen name="chat/[botId]/new" options={{ headerShown: true }} />
-      </Stack>
-    </AppServicesProvider>
+    <ThemeProvider value={navTheme}>
+      <AppServicesProvider fallback={(state) => (state.kind === 'failed' ? <BootFailure message={state.error.message} /> : null)}>
+        <StatusBar style={theme.dark ? 'light' : 'dark'} />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" options={{ title: '会话' }} />
+          <Stack.Screen name="connect" options={{ animation: 'fade' }} />
+          <Stack.Screen name="bot/[botId]" options={{ headerShown: true }} />
+          <Stack.Screen name="chat/[botId]/[sessionId]" options={{ headerShown: true }} />
+          <Stack.Screen name="chat/[botId]/new" options={{ headerShown: true }} />
+          <Stack.Screen name="diagnostics-log" options={{ headerShown: true }} />
+        </Stack>
+      </AppServicesProvider>
+    </ThemeProvider>
   );
 }
 

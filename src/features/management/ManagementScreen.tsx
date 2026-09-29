@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -62,6 +63,16 @@ export function ManagementScreen() {
 
       <Pressable
         accessibilityRole="button"
+        onPress={() => router.push('/diagnostics-log')}
+        style={({ pressed }) => [styles.link, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}
+      >
+        <Ionicons name="pulse-outline" size={18} color={colors.textMuted} />
+        <Text style={[styles.linkText, { color: colors.text }]}>诊断信息</Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="button"
         disabled={signingOut}
         onPress={confirmSignOut}
         style={({ pressed }) => [
@@ -113,5 +124,15 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   signOutText: { fontSize: fontSize.body, fontWeight: '600' },
+  link: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xl,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  linkText: { flex: 1, fontSize: fontSize.body },
   pressed: { opacity: 0.6 },
 });

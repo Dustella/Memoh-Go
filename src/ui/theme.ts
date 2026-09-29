@@ -76,5 +76,17 @@ export function useTheme(): Theme {
   return isDark ? DARK_THEME : LIGHT_THEME;
 }
 
+/** Header, tab bar and screen background colours for React Navigation, from the same tokens. */
+export function navigationColors(colors: Palette) {
+  return {
+    primary: colors.accent,
+    background: colors.background,
+    card: colors.surface,
+    text: colors.text,
+    border: colors.border,
+    notification: colors.danger,
+  };
+}
+
 const LIGHT_THEME: Theme = { dark: false, colors: light };
 const DARK_THEME: Theme = { dark: true, colors: dark };
