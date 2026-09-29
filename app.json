@@ -22,7 +22,8 @@
       "expo-router",
       "expo-sqlite",
       "expo-secure-store",
-      "expo-splash-screen"
+      "expo-splash-screen",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true

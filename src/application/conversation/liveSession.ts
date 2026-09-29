@@ -27,6 +27,13 @@ import {
   type Recovery,
 } from '../../core/operations/outbox';
 import type { MessagePayload } from '../../core/operations/outbox';
+
+export type SendOptions = Readonly<{
+  replace?: MessagePayload['replace'];
+  modelId?: string;
+  reasoningEffort?: string;
+  workspaceTargetId?: string;
+}>;
 import { afterLookup, planRecovery } from '../../core/operations/recovery';
 import { createSessionStream, receiveRuntimeEvent, awaitSnapshot, type RuntimeEvent, type SessionStream } from '../../core/sync/runtimeStream';
 import { loadRuntimeCheckpoint, saveRuntimeCheckpoint, type SessionKey } from '../../data/local/conversationStore';
@@ -209,17 +216,28 @@ export class LiveSession {
 
   // ------------------------------------------------------------ user actions
 
-  /** Queue a message. It is durable before anything touches the network. */
-  async send(text: string, replace?: MessagePayload['replace']) {
+  /**
+   * Queue a message. It is durable before anything touches the network.
+   * Model, effort and location (CH-17/18) are bound to the intent here, so a
+   * resend after a crash uses what the user saw when they pressed send.
+   */
+  async send(text: string, options: SendOptions = {}) {
     const scope = this.scope;
     const trimmed = text.trim();
     if (!scope || !trimmed) return;
+    const payload: MessagePayload = {
+      text: trimmed,
+      ...(options.replace ? { replace: options.replace } : {}),
+      ...(options.modelId ? { modelId: options.modelId } : {}),
+      ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+      ...(options.workspaceTargetId ? { workspaceTargetId: options.workspaceTargetId } : {}),
+    };
     const entry = createOutboxEntry({
       invocationId: this.deps.newId(),
       scope,
       botId: this.botId,
       sessionId: this.sessionId,
-      payload: replace ? { text: trimmed, replace } : { text: trimmed },
+      payload,
       now: this.deps.now(),
     });
     await this.persist(entry);
@@ -251,7 +269,12 @@ export class LiveSession {
     const failed = this.failed.find((e) => e.invocationId === invocationId);
     if (!failed) return;
     await this.discard(invocationId);
-    await this.send(failed.payload.text);
+    await this.send(failed.payload.text, {
+      replace: failed.payload.replace,
+      modelId: failed.payload.modelId,
+      reasoningEffort: failed.payload.reasoningEffort,
+      workspaceTargetId: failed.payload.workspaceTargetId,
+    });
   }
 
   /** Stop the running turn. Idempotent while a stop is in flight. */
@@ -353,6 +376,12 @@ export class LiveSession {
       const now = this.deps.now();
       if (head.status === 'queued' && head.nextAttemptAt <= now && this.socketStatus === 'open' && this.stream.live) {
         const replace = head.payload.replace;
+        // Per-send overrides (CH-17/18); absent fields keep the session's own preference.
+        const overrides = {
+          ...(head.payload.modelId ? { model_id: head.payload.modelId } : {}),
+          ...(head.payload.reasoningEffort ? { reasoning_effort: head.payload.reasoningEffort } : {}),
+          ...(head.payload.workspaceTargetId ? { workspace_target_id: head.payload.workspaceTargetId } : {}),
+        };
         const sent = this.attachment?.socket.send(
           replace
             ? {
@@ -361,12 +390,14 @@ export class LiveSession {
                 session_id: head.sessionId,
                 turn_id: replace.turnId,
                 ...(replace.kind === 'edit' ? { text: head.payload.text } : {}),
+                ...overrides,
               }
             : {
                 type: 'message',
                 invocation_id: head.invocationId,
                 session_id: head.sessionId,
                 text: head.payload.text,
+                ...overrides,
               },
         );
         if (sent) await this.persist(markSent(head, now));

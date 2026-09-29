@@ -84,7 +84,7 @@ export type HistoryState = Readonly<{
 
 /** Local history first (instant, offline), then the newest server page. */
 export function useHistory(botId: string, sessionId: string): HistoryState {
-  const { db, sync } = useServices();
+  const { db, sync, log } = useServices();
   const scope = useScope();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [checkpoint, setCheckpoint] = useState<HistoryCheckpoint | null>(null);
@@ -115,12 +115,13 @@ export function useHistory(botId: string, sessionId: string): HistoryState {
       await sync.syncLatest({ botId, sessionId });
       setError(null);
     } catch (e) {
+      if (!(e instanceof NeedsSignInError)) log.warn('history.sync_failed', { session_id: sessionId, error: e });
       setError(errorText(e));
     } finally {
       setSyncing(false);
       await readCache();
     }
-  }, [sync, botId, sessionId, readCache]);
+  }, [sync, botId, sessionId, readCache, log]);
 
   const loadOlder = useCallback(async () => {
     if (olderInFlight.current || !scope) return;

@@ -148,11 +148,10 @@ export function BotDetailScreen({ botId }: { botId: string }) {
         {contentRow('chatbubbles-outline', t('bot.sessions'), count(sessionCount), () =>
           router.push({ pathname: '/bot/[botId]', params: { botId } }),
         )}
-        {contentRow('library-outline', t('bot.memory'), count(detail.counts.memory))}
-        {contentRow('alarm-outline', t('bot.schedules'), count(detail.counts.schedules))}
-        {contentRow('folder-outline', t('bot.workdirs'), count(detail.counts.workdirs))}
+        {contentRow('library-outline', t('bot.memory'), count(detail.counts.memory), () => router.push({ pathname: '/bot/[botId]/memory', params: { botId } }))}
+        {contentRow('alarm-outline', t('bot.schedules'), count(detail.counts.schedules), () => router.push({ pathname: '/bot/[botId]/schedules', params: { botId } }))}
+        {contentRow('folder-outline', t('bot.workdirs'), count(detail.counts.workdirs), () => router.push({ pathname: '/resources/[botId]', params: { botId } }))}
       </View>
-      <Text style={[styles.hint, { color: colors.textSubtle }]}>{t('bot.laterMilestone')}</Text>
 
       <Text style={[shared.section, styles.sectionGap, { color: colors.textMuted }]}>{t('bot.checks')}</Text>
       <View style={[shared.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>

@@ -210,3 +210,33 @@ describe('copyChoices (CH-12)', () => {
     expect(copyChoices(rows, { kind: 'edge', key: 'e', turnId: '', state: 'beginning' })).toEqual([]);
   });
 });
+
+describe('attachment rows (CH-15)', () => {
+  it('keeps names and workspace paths from both attachment shapes', () => {
+    const rows = turnRows({
+      turn_id: 't',
+      role: 'assistant',
+      timestamp: 'x',
+      messages: [
+        {
+          id: 0,
+          type: 'attachments',
+          attachments: [
+            { type: 'file', name: 'report.md', path: '/data/reports/weekly.md' },
+            { type: 'image', file_name: 'chart.png', file_path: '/data/reports/chart.png' } as never,
+            { type: 'audio' },
+          ],
+        },
+      ],
+    });
+    expect(rows[0]).toMatchObject({
+      kind: 'attachments',
+      count: 3,
+      items: [
+        { name: 'report.md', path: '/data/reports/weekly.md', type: 'file' },
+        { name: 'chart.png', path: '/data/reports/chart.png', type: 'image' },
+        { name: 'audio', path: undefined, type: 'audio' },
+      ],
+    });
+  });
+});

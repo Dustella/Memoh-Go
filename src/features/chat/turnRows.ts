@@ -43,7 +43,15 @@ export type ChatRow =
       control?: ControlView;
       first: boolean;
     }>
-  | Readonly<{ kind: 'attachments'; key: string; turnId: string; count: number; first: boolean }>
+  | Readonly<{
+      kind: 'attachments';
+      key: string;
+      turnId: string;
+      count: number;
+      /** CH-15: a workspace `path` opens the file viewer. */
+      items?: readonly Readonly<{ name: string; path?: string; type?: string }>[];
+      first: boolean;
+    }>
   | Readonly<{ kind: 'notice'; key: string; turnId: string; text: string; tone: 'error' | 'info'; first: boolean }>;
 
 const DETAIL_MAX_CHARS = 2_000;
@@ -145,7 +153,21 @@ function blockRows(turnId: string, block: Block, first: boolean, ctx: RowContext
     }
     case 'attachments':
       return block.attachments?.length
-        ? [{ kind: 'attachments', key: base, turnId, count: block.attachments.length, first }]
+        ? [
+            {
+              kind: 'attachments',
+              key: base,
+              turnId,
+              count: block.attachments.length,
+              items: block.attachments.map((a) => {
+                // The runtime projection says name/path; the timeline form says file_name/file_path.
+                const raw = a as typeof a & { file_name?: string; file_path?: string };
+                const path = raw.path ?? raw.file_path;
+                return { name: raw.name ?? raw.file_name ?? path?.split('/').pop() ?? raw.type, path, type: raw.type };
+              }),
+              first,
+            },
+          ]
         : [];
     case 'error':
       return [{ kind: 'notice', key: base, turnId, text: block.content || block.code || t('chat.error'), tone: 'error', first }];

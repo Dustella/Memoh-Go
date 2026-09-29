@@ -259,7 +259,182 @@ export class MemohClient {
     const { body } = await this.request<{ workdirs?: unknown[] }>('GET', `/bots/${encodeURIComponent(botId)}/workdirs`, { token });
     return body.workdirs?.length ?? 0;
   }
+
+  // ------------------------------------------------------------ resources (M4)
+
+  private bot(botId: string, rest: string) {
+    return `/bots/${encodeURIComponent(botId)}${rest}`;
+  }
+
+  async getContainer(token: string, botId: string): Promise<ContainerInfo> {
+    return (await this.request<ContainerInfo>('GET', this.bot(botId, '/container'), { token })).body;
+  }
+
+  async getContainerMetrics(token: string, botId: string): Promise<ContainerMetrics> {
+    return (await this.request<ContainerMetrics>('GET', this.bot(botId, '/container/metrics'), { token })).body;
+  }
+
+  async listWorkspaceTargets(token: string, botId: string): Promise<WorkspaceTarget[]> {
+    const { body } = await this.request<{ targets?: WorkspaceTarget[] }>('GET', this.bot(botId, '/workspace-targets'), { token });
+    return body.targets ?? [];
+  }
+
+  async listWorkdirs(token: string, botId: string): Promise<Workdir[]> {
+    const { body } = await this.request<{ workdirs?: Workdir[] }>('GET', this.bot(botId, '/workdirs'), { token });
+    return body.workdirs ?? [];
+  }
+
+  async listFiles(token: string, botId: string, path: string): Promise<FsEntry[]> {
+    const { body } = await this.request<{ entries?: FsEntry[] }>('GET', this.bot(botId, `/container/fs/list?path=${encodeURIComponent(path)}`), { token });
+    return body.entries ?? [];
+  }
+
+  async statFile(token: string, botId: string, path: string): Promise<FsEntry> {
+    return (await this.request<FsEntry>('GET', this.bot(botId, `/container/fs?path=${encodeURIComponent(path)}`), { token })).body;
+  }
+
+  async readFile(token: string, botId: string, path: string): Promise<{ content: string; size: number; revision?: string }> {
+    const { body } = await this.request<{ content?: string; size?: number; revision?: string }>(
+      'GET',
+      this.bot(botId, `/container/fs/read?path=${encodeURIComponent(path)}`),
+      { token },
+    );
+    return { content: body.content ?? '', size: body.size ?? 0, revision: body.revision };
+  }
+
+  /** Binary download (images, sharing). Send the token as a header, never in the URL. */
+  downloadUrl(botId: string, path: string) {
+    return `${this.baseUrl}${this.bot(botId, `/container/fs/download?path=${encodeURIComponent(path)}`)}`;
+  }
+
+  async listSchedules(token: string, botId: string): Promise<Schedule[]> {
+    const { body } = await this.request<{ items?: Schedule[] }>('GET', this.bot(botId, '/schedule'), { token });
+    return body.items ?? [];
+  }
+
+  async createSchedule(token: string, botId: string, body: ScheduleInput): Promise<Schedule> {
+    return (await this.request<Schedule>('POST', this.bot(botId, '/schedule'), { token, body })).body;
+  }
+
+  /** Partial update; `enabled` is how a schedule is switched on and off (there is no separate route). */
+  async updateSchedule(token: string, botId: string, id: string, body: Partial<ScheduleInput>): Promise<Schedule> {
+    return (await this.request<Schedule>('PUT', this.bot(botId, `/schedule/${encodeURIComponent(id)}`), { token, body })).body;
+  }
+
+  async listScheduleLogs(token: string, botId: string, scheduleId?: string, limit = 20): Promise<ScheduleLog[]> {
+    const path = scheduleId ? `/schedule/${encodeURIComponent(scheduleId)}/logs` : '/schedule/logs';
+    const { body } = await this.request<{ items?: ScheduleLog[] }>('GET', this.bot(botId, `${path}?limit=${limit}`), { token });
+    return body.items ?? [];
+  }
+
+  async listMemory(token: string, botId: string): Promise<MemoryItem[]> {
+    const { body } = await this.request<{ results?: MemoryItem[] | null }>('GET', this.bot(botId, '/memory?no_stats=true'), { token });
+    return body.results ?? [];
+  }
+
+  async searchMemory(token: string, botId: string, query: string, limit = 30): Promise<MemoryItem[]> {
+    const { body } = await this.request<{ results?: MemoryItem[] | null }>('POST', this.bot(botId, '/memory/search'), {
+      token,
+      body: { query, limit, no_stats: true },
+    });
+    return body.results ?? [];
+  }
+
+  async listModels(token: string): Promise<ModelOption[]> {
+    const { body } = await this.request<ModelOption[] | { items?: ModelOption[] }>('GET', '/models', { token });
+    return Array.isArray(body) ? body : (body.items ?? []);
+  }
 }
+
+// ---------------------------------------------------------------- resource shapes (dev stack, 2026-09-29)
+
+export type ContainerInfo = Readonly<{
+  container_id?: string;
+  workspace_backend?: string;
+  image?: string;
+  status?: string;
+  container_path?: string;
+  task_running?: boolean;
+  updated_at?: string;
+}>;
+export type ContainerMetrics = Readonly<{
+  supported: boolean;
+  unsupported_reason?: string;
+  status?: Readonly<{ exists?: boolean; task_running?: boolean }>;
+  metrics?: Readonly<{
+    cpu?: Readonly<{ usage_percent?: number }>;
+    memory?: Readonly<{ usage_bytes?: number; limit_bytes?: number }>;
+    storage?: Readonly<{ used_bytes?: number }>;
+  }>;
+  sampled_at?: string;
+}>;
+export type WorkspaceTarget = Readonly<{
+  target_id: string;
+  kind: 'native' | 'remote' | string;
+  runtime_id?: string;
+  name: string;
+  primary?: boolean;
+  online?: boolean;
+  /** online | offline | revoked | owner_mismatch | client_update_required */
+  status?: string;
+}>;
+export type Workdir = Readonly<{
+  id: string;
+  name: string;
+  target_kind?: string;
+  workspace_target_id?: string;
+  path: string;
+  archived?: boolean;
+}>;
+export type FsEntry = Readonly<{ name: string; path: string; size: number; mode?: string; modTime?: string; isDir: boolean }>;
+export type Schedule = Readonly<{
+  id: string;
+  name: string;
+  description?: string;
+  /** Cron expression (5 fields, optional seconds), in the Bot's time zone. */
+  pattern: string;
+  enabled: boolean;
+  command: string;
+  max_calls?: number | null;
+  current_calls?: number;
+  run_target?: string;
+  created_at?: string;
+  updated_at?: string;
+}>;
+export type ScheduleInput = Readonly<{
+  name: string;
+  description?: string;
+  pattern: string;
+  command: string;
+  enabled?: boolean;
+  run_target?: 'new_session' | 'existing_session';
+}>;
+export type ScheduleLog = Readonly<{
+  id: string;
+  schedule_id: string;
+  session_id?: string;
+  status: string;
+  result_text?: string;
+  error_message?: string;
+  started_at: string;
+  completed_at?: string;
+}>;
+export type MemoryItem = Readonly<{
+  id: string;
+  memory: string;
+  created_at?: string;
+  updated_at?: string;
+  score?: number;
+  metadata?: Readonly<Record<string, unknown>>;
+}>;
+export type ModelOption = Readonly<{
+  id: string;
+  model_id: string;
+  name?: string;
+  type?: string;
+  enable?: boolean;
+  reasoning?: Readonly<{ supported?: boolean; can_disable?: boolean; efforts?: readonly string[]; default_effort?: string }>;
+}>;
 
 export type QueueKind = 'steer' | 'follow_up';
 /** accepted = pending; claimed/applied = taken by the run; the rest are terminal. */

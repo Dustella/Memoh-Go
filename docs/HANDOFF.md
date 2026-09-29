@@ -435,6 +435,22 @@ React Native 的 `fetch` 不流式返回响应体，`sessions/events` 用 `XMLHt
 
 应用内“回复完成”提醒只对首页实时看到过运行中的会话触发。外部发起、几秒内完成的任务在订阅建立前就结束了，只会出现在“新结果”里。用长请求（600 字以上）测试提醒。
 
+### 5.33 新增 expo-file-system 57.0.7 与 expo-sharing 57.0.22，真机需要重新构建
+
+M4 的文件分享与图片预览用到这两个原生模块。模拟器开发客户端已重建（x86_64 debug，Gradle 走本地代理）；真机需要重新 `mise run android`。
+
+### 5.34 `<Image source={{ headers }}>` 在 Android 新架构下不带请求头
+
+工作区图片直接用带 `authorization` 头的 Image 加载，dev stack 返回 401。现在先用 `File.downloadFileAsync`（带头）下载到 `cache/preview/`，再用 `file://` 显示；文件名带修改时间，改过的图片不会显示旧缓存。
+
+### 5.35 dev stack 上的 M4 测试数据
+
+为测试 M4 在 Kitty 上创建了：`/data/reports/`（weekly.md、notes.txt、data.json、chart.png）、文件夹“Reports”、定时任务“Morning summary”（停用）和“Minute ping”（每分钟，测试后已停用，留有几条运行记录）、两条记忆。都只在本地 dev stack。
+
+### 5.36 开发客户端的齿轮按钮会挡住页面右上角
+
+dev-client 的悬浮齿轮默认在右上角，正好压在标题栏按钮（分享、新建会话）上。截图测试前把它拖到屏幕中下部（`adb shell input swipe 972 172 972 1500 600`）。release 构建没有这个按钮。
+
 ## 6. 快速恢复命令
 
 ### 6.1 确认设备

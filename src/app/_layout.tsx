@@ -52,6 +52,12 @@ export default function RootLayout() {
           <Stack.Screen name="settings" options={{ headerShown: true, title: t('nav.settings') }} />
           <Stack.Screen name="team" options={{ headerShown: true, title: t('team.title') }} />
           <Stack.Screen name="bot/[botId]/about" options={{ headerShown: true, title: t('nav.botDetail') }} />
+          <Stack.Screen name="resources/[botId]" options={{ headerShown: true }} />
+          <Stack.Screen name="files/[botId]" options={{ headerShown: true }} />
+          <Stack.Screen name="file/[botId]" options={{ headerShown: true }} />
+          <Stack.Screen name="bot/[botId]/schedules" options={{ headerShown: true, title: t('nav.schedules') }} />
+          <Stack.Screen name="bot/[botId]/schedule-new" options={{ headerShown: true, title: t('nav.newSchedule') }} />
+          <Stack.Screen name="bot/[botId]/memory" options={{ headerShown: true, title: t('nav.memory') }} />
         </Stack>
         <InAppAlertHost />
       </AppServicesProvider>

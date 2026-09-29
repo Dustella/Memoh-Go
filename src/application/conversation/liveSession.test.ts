@@ -258,12 +258,29 @@ describe('LiveSession', () => {
     socket().open();
     snapshot();
     await flush();
-    await live.send('same question', { kind: 'retry', turnId: 't9' });
+    await live.send('same question', { replace: { kind: 'retry', turnId: 't9' } });
     await flush();
     const retry = socket().sent.find((f) => f.type === 'retry_message');
     expect(retry).toMatchObject({ session_id: 's1', turn_id: 't9' });
     expect(retry).not.toHaveProperty('text');
     expect(socket().sent.filter((f) => f.type === 'message')).toHaveLength(0);
+    live.stop();
+  });
+
+  it('binds model, effort and location to the intent and sends them with it (CH-17/18)', async () => {
+    const { live, socket, snapshot } = await setup();
+    await live.start();
+    await flush();
+    socket().open();
+    snapshot();
+    await flush();
+    await live.send('plain');
+    await flush();
+    await live.send('tuned', { modelId: 'm-1', reasoningEffort: 'high', workspaceTargetId: 'native' });
+    const [plain] = socket().sent.filter((f) => f.type === 'message');
+    expect(plain).not.toHaveProperty('model_id');
+    expect(plain).not.toHaveProperty('workspace_target_id');
+    expect(live.getSnapshot().pending.at(-1)?.payload).toEqual({ text: 'tuned', modelId: 'm-1', reasoningEffort: 'high', workspaceTargetId: 'native' });
     live.stop();
   });
 

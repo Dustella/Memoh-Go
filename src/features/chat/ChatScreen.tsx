@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LegendList, type LegendListRef } from '@legendapp/list/react-native';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -23,6 +23,8 @@ import { chatStatus, type StatusAction } from './chatStatus';
 import { Composer } from './components/Composer';
 import { MessageMenu } from './components/MessageMenu';
 import { QueueBar } from './components/QueueBar';
+import { SendSettingsBar } from './components/SendSettingsBar';
+import { useSendSettings } from './useSendSettings';
 import { StatusStrip } from './components/StatusStrip';
 import type { QueueMode } from '../../application/conversation/sessionQueue';
 import { useSessionQueue } from './useSessionQueue';
@@ -95,6 +97,8 @@ type RowActions = DecisionActions &
     retry: (invocationId: string) => void;
     /** Long-press: open the copy menu for this row (CH-12). */
     menu: (row: ChatRow) => void;
+    /** CH-15: open a workspace file from an attachment. */
+    openFile: (path: string) => void;
   }>;
 
 const LONG_PRESS_MS = 350;
@@ -196,10 +200,29 @@ const Row = memo(function Row({ row, actions }: { row: ChatRow; actions: RowActi
     case 'attachments':
       return (
         <View style={[styles.assistant, top]}>
-          <View style={styles.chipRow}>
-            <Ionicons name="attach" size={14} color={colors.textMuted} />
-            <Text style={[styles.chipText, { color: colors.textMuted }]}>{tn('chat.attachments', row.count)}</Text>
-          </View>
+          {row.items?.some((i) => i.path) ? (
+            <View style={styles.attachments}>
+              {row.items.map((item, i) =>
+                item.path ? (
+                  <Pressable
+                    key={`${item.path}:${i}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('chat.openAttachment', { name: item.name })}
+                    onPress={() => actions.openFile(item.path!)}
+                    style={({ pressed }) => [styles.attachment, { borderColor: colors.border, backgroundColor: pressed ? colors.surfaceMuted : colors.surface }]}
+                  >
+                    <Ionicons name={item.type === 'image' ? 'image-outline' : 'document-outline'} size={14} color={colors.accent} />
+                    <Text numberOfLines={1} style={[styles.chipText, { color: colors.text }]}>{item.name}</Text>
+                  </Pressable>
+                ) : null,
+              )}
+            </View>
+          ) : (
+            <View style={styles.chipRow}>
+              <Ionicons name="attach" size={14} color={colors.textMuted} />
+              <Text style={[styles.chipText, { color: colors.textMuted }]}>{tn('chat.attachments', row.count)}</Text>
+            </View>
+          )}
         </View>
       );
     case 'notice':
@@ -228,6 +251,10 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
   const runKey = `${snapshot.run?.run_id ?? ''}:${snapshot.run?.status ?? ''}:${snapshot.run?.steer_turns?.length ?? 0}:${snapshot.run?.user_turns?.length ?? 0}`;
   const { queue, view: queueView } = useSessionQueue(botId, sessionId, runKey);
   const [queueMode, setQueueMode] = useState<QueueMode>('follow_up');
+  const sendSettings = useSendSettings(botId, sessionId);
+  const sendOptions = sendSettings.options;
+  const sendOptionsRef = useRef(sendOptions);
+  sendOptionsRef.current = sendOptions;
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- locale: row text is translated
   const persistedRows = useMemo(() => historyRows(history.turns), [history.turns, locale]);
@@ -260,13 +287,14 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
       retry: (id) => void live.retryFailed(id),
       approve: (id, decision, optionId) => void live.respondApproval(id, decision, optionId),
       answer: (id, response) => void live.respondUserInput(id, response),
+      openFile: (path) => router.push({ pathname: '/file/[botId]', params: { botId, path } }),
       menu: (row) => {
         const choices: CopyChoice[] = copyChoices(rowsRef.current, row);
         // CH-14: only the latest saved turn can be replaced, and not while a run is active.
         const latest = latestRef.current;
         if (latest && !runningRef.current && row.turnId === latest.turnId) {
           if (row.kind === 'markdown' || row.kind === 'reasoning' || row.kind === 'tool') {
-            choices.push({ label: t('chat.menu.regenerate'), text: '', action: () => void live.send(latest.userText, { kind: 'retry', turnId: latest.turnId }) });
+            choices.push({ label: t('chat.menu.regenerate'), text: '', action: () => void live.send(latest.userText, { ...sendOptionsRef.current, replace: { kind: 'retry', turnId: latest.turnId } }) });
           } else if (row.kind === 'user') {
             choices.push({ label: t('chat.menu.edit'), text: '', action: () => setEditing({ turnId: latest.turnId, text: row.text, nonce: Date.now() }) });
           }
@@ -301,7 +329,8 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
       if (atBottomRef.current) followUntil.current = Date.now() + 3_000;
       // Swap the finished live copy for the saved turns (a steered or replaced
       // turn is saved in another shape), so later actions target real turns.
-      void refreshAfterRun();
+      // A short delay lets the server finish saving the turn it just ended.
+      setTimeout(() => void refreshAfterRun(), 800);
     }
     wasRunning.current = running;
     if (Date.now() > followUntil.current) return;
@@ -397,6 +426,16 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
         onPromote={(item) => void queue.promote(item)}
         onDismissNotice={() => queue.dismissNotice()}
       />
+      {!running ? (
+        <SendSettingsBar
+          settings={sendSettings.settings}
+          models={sendSettings.models}
+          targets={sendSettings.targets}
+          model={sendSettings.model}
+          target={sendSettings.target}
+          onChange={sendSettings.update}
+        />
+      ) : null}
       <Composer
         botId={botId}
         draftKey={sessionId}
@@ -408,7 +447,7 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
         onSend={(text) => {
           const toEnd = () => requestAnimationFrame(() => void listRef.current?.scrollToEnd({ animated: true }));
           if (editing) {
-            void live.send(text, { kind: 'edit', turnId: editing.turnId });
+            void live.send(text, { ...sendOptions, replace: { kind: 'edit', turnId: editing.turnId } });
             setEditing(null);
             toEnd();
             return;
@@ -417,12 +456,12 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
           if (running && queueView.support !== 'no') {
             return queue.submit(queueMode, text).then((outcome) => {
               if (outcome.kind === 'returned') return 'restore' as const;
-              if (outcome.kind === 'send_now') void live.send(text);
+              if (outcome.kind === 'send_now') void live.send(text, sendOptions);
               toEnd();
               return 'sent' as const;
             });
           }
-          void live.send(text);
+          void live.send(text, sendOptions);
           // Sending means "take me to the newest message", even when reading older history.
           toEnd();
         }}
@@ -459,4 +498,15 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4 },
   reasoning: { fontSize: fontSize.small, lineHeight: 20, borderLeftWidth: 2, paddingLeft: spacing.md, marginTop: spacing.xs },
   notice: { fontSize: fontSize.small, lineHeight: 20 },
+  attachments: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingVertical: 2 },
+  attachment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    maxWidth: '100%',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+  },
 });
