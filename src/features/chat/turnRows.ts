@@ -229,6 +229,8 @@ export type ComposeInput = Readonly<{
   /** Open or finished control requests by decision id, plus whether a stop is in flight. */
   controls?: ReadonlyMap<string, ControlView>;
   stopping?: boolean;
+  /** `historyRows(history)`, when the caller already has it. */
+  persistedRows?: readonly ChatRow[];
 }>;
 
 /**
@@ -236,15 +238,36 @@ export type ComposeInput = Readonly<{
  * the server has not attached to any visible turn. A turn is never shown
  * twice: once history contains it, the live copy and the pending bubble go.
  */
-export function composeRows({ history, run, pending, controls, stopping = false }: ComposeInput): ChatRow[] {
-  const rows = historyRows(history);
+export function composeRows({ history, run, pending, controls, stopping = false, persistedRows }: ComposeInput): ChatRow[] {
+  const runTurnSaved = run ? history.some((t) => t.turn_id === run.turn_id) : true;
+  // CH-14: a retry/edit run replaces the saved tail from `replace_from_message_id`
+  // (the whole turn that holds it) until the new turn is saved.
+  let visible: readonly Turn[] = history;
+  let replacedUser: Turn | undefined;
+  const replaceFrom = run && !runTurnSaved ? run.operation?.replace_from_message_id : undefined;
+  if (replaceFrom) {
+    const at = history.findIndex((t) => t.id === replaceFrom);
+    if (at >= 0) {
+      const turnId = history[at]!.turn_id;
+      const start = history.findIndex((t) => t.turn_id === turnId);
+      replacedUser = history.find((t) => t.turn_id === turnId && t.role === 'user');
+      visible = history.slice(0, start);
+    }
+  }
+  // History rows only change with history; callers memoise them so a streaming
+  // delta (every ~33 ms) does not re-split every saved reply.
+  const rows = visible === history && persistedRows ? [...persistedRows] : historyRows(visible);
   const persisted = new Set(history.map((t) => t.turn_id));
   const liveTurn = run && !persisted.has(run.turn_id) ? run : null;
 
   if (liveTurn) {
     const mine = pending.find((p) => p.turnId === liveTurn.turn_id);
     const userTurn = liveTurn.user_turns?.find((t) => t.turn_id === liveTurn.turn_id) ?? liveTurn.user_turns?.[0];
-    const text = userTurn?.text ?? mine?.text;
+    const text =
+      userTurn?.text ??
+      liveTurn.operation?.replacement_user_turn?.text ??
+      mine?.text ??
+      (liveTurn.operation?.kind === 'retry' ? replacedUser?.text : undefined);
     const active = isRunActive(liveTurn.status);
     if (text !== undefined) rows.push({ kind: 'user', key: `${liveTurn.turn_id}:u`, turnId: liveTurn.turn_id, text, attachments: 0 });
     rows.push(...liveAssistantRows(liveTurn, userTurn, { interactive: active && liveTurn.status !== 'aborting' && !stopping, controls }));
@@ -270,7 +293,7 @@ export function composeRows({ history, run, pending, controls, stopping = false 
 }
 
 
-export type CopyChoice = Readonly<{ label: string; text: string }>;
+export type CopyChoice = Readonly<{ label: string; text: string; action?: () => void }>;
 
 /**
  * CH-12: what a long-press on `row` can copy. A reply is rendered as one row

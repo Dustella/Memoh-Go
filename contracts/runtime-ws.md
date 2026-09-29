@@ -78,3 +78,26 @@
 ## 可靠请求
 
 Web 在内存中按 `invocation:<id>` / `control:<id>` 保存待确认请求，重连时原样重发，收到对应 ACK 删除。移动端相同规则，但保存在 SQLite Outbox（跨进程终止）。
+
+
+## 追加（M3，2026-09-29 在 dev stack 实测）
+
+### 回复中追加消息：follow-up / steer（CH-13）
+
+- 类型化接口是 HTTP，不是 WS：`POST /bots/:bot/sessions/:session/follow-up-queue`、`POST .../steer-queue`，请求体 `{invocation_id, text}`，成功 202，返回 `{item_id, status, position, text, target_run_id | enqueued_during_run_id}`。WS 上只有 `/steer`、`/queue` 斜杠命令。
+- `GET .../queue` → `{steer_supported, steer[], follow_up[]}`。`steer_supported` 只在有活动 run 且支持步间插入时为 `true`（空闲时实测为 `false`）。
+- 幂等：同一 `invocation_id` + 同文本重放返回同一个 item；不同文本 → 409 `session_runtime.invocation_conflict`。
+- 没有活动 run → 409 `queue_no_active_run`（问题详情 JSON：`{type, status, detail, code, args, request_id}`，不是 `{message}`）。
+- 应用后：steer 成为一个新的用户 turn（`user_turn_upserts`，出现在 `steer_turns` 里带 `after_message_id`），之后的回复在历史里归到这个 steer turn 下；follow-up 在本轮结束后作为新 run 执行，**不发** `run_accepted`，只通过 runtime delta 出现。
+- 旧服务端没有这些路由（通用 404 `Not Found`）时，客户端回退到 Outbox（`session_busy` 退避重试）。
+
+### 重试 / 编辑最近一轮（CH-14）
+
+- WS `retry_message` `{invocation_id, session_id, turn_id}`；`edit_message` 另带 `text`。只能针对最近一轮。
+- 结果是一个新 run、新 `turn_id`、更大的 `turn_position`，照常回 `run_accepted`。`current_run_view.operation = {kind: 'retry'|'edit', replace_from_message_id, replacement_user_turn?}`。
+- 保存后：被保留的用户消息 id 不变但移入新 turn，旧 turn 从历史消失。客户端在替换期间隐藏从 `replace_from_message_id` 所在 turn 起的历史，并把最新一页历史视为其范围内的全部事实（`saveHistoryPage`）。
+
+### 会话活动流（SS-05）
+
+- `GET /bots/:bot/sessions/events`，`text/event-stream`，每帧一行 `data: {json}`。实测帧：`activity_ready{cache_invalidation:true}`（连上即发）、`session_touched{session_id, updated_at}`（常成对出现）、`session_invalidated{session_id}`、`session_compaction{session_ids:[]}`、`ping`（约 20 秒一次）。源码另有 `session_created`、`session_title_changed`、`dropped`。帧里没有消息内容，也没有删除事件。
+- React Native 用 XHR 的增量 `responseText` 读取（`fetch` 不流式）。

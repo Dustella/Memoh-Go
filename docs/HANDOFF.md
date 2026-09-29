@@ -194,7 +194,8 @@ npm test
 | --- | --- | --- |
 | `src/features/chat/ChatScreen.tsx` 底部"只读预览 · 发送功能即将开放" | 占位输入框，不可输入 | Outbox 发送 worker + 实时订阅完成后换成真实 Composer |
 | 首页、资源 Tab（`PlaceholderScreen`） | 静态占位页 | M3 首页摘要、M4 资源 |
-| `OSS_DEFAULT_TEAM_ID`（`src/core/identity/credential.ts`） | 所有账号固定用 OSS 默认 Team | Cloud Team 契约确定后改为真实 Team 选择 |
+| `OSS_DEFAULT_TEAM_ID`（`src/core/identity/credential.ts`） | 登录时用 OSS 默认 Team；切换机制已实现（ID-05），但 OSS 只有这一个 Team | Cloud Team 契约确定后接入真实 Team 列表 |
+| `mockTeamDirectory`（`src/core/identity/teams.ts`，`memoh://team?mock=1`） | dev 专用假 Team，见 5.27 | Cloud Team 列表接口 |
 | `pageHasOlder`（`src/application/conversation/conversationSync.ts`） | 假设每个会话的 `turn_position` 从 1 开始（dev stack 观察所得，未在源码确认）；更早的空页会纠正 | 上游提供 committed-through / has_more 标记（U3） |
 | 单元测试中的假 Memoh 服务端（`connectService.test.ts`、`conversationSync.test.ts`） | 仅测试用；响应形状按 dev stack 实测 | — |
 | `/bench`、`/db-selftest`、`/diagnostics`、`/storage-diagnostics` | 开发专用页，release 构建重定向回首页（bench 可用 `EXPO_PUBLIC_BENCH=1` 打开） | — |
@@ -409,6 +410,30 @@ Vitest 5 依赖 rolldown。npm 在已有锁文件时会漏装平台绑定（npm/
 ### 5.26 开发专用模拟数据：`memoh://home-preview`
 
 `src/app/(tabs)/home-preview.tsx` 用固定的模拟会话渲染首页全部分区（等你处理的四种原因、正在运行含“上次状态”、继续、新结果、最近）。开发栈模型不调用工具，真实审批/提问无法产生，只能用它检查外观。release 构建跳转到首页。另有 `memoh://decisions-preview`（审批卡片）同理。
+
+### 5.27 开发专用模拟数据：`memoh://team?mock=1`（ID-05）
+
+OSS 服务端是单 Team：Team 由数据库连接上的 `memoh.team_id` 会话变量固定，HTTP API 没有 Team 列表、切换接口或按请求选择 Team 的参数。`src/core/identity/teams.ts` 的 `mockTeamDirectory` 仅在 dev 构建、带 `?mock=1` 时加入一个假 Team（`mock-team-b`，“Research (mock)”），用来验证切换与本地隔离。切到假 Team 后请求仍发到同一个单 Team 服务端，所以看到同样的 Bot，但缓存、草稿、Outbox 都在另一个 scope 里。替换条件：Cloud 提供 Team 列表与按请求选择 Team 的契约。切换后在模拟器上应切回“默认 Team”。
+
+### 5.28 Fast Refresh 会再开一个数据库连接
+
+改动 `AppServices` 依赖链上的模块后，Fast Refresh 重新执行模块，会新建一套服务和第二个 SQLite 连接，旧的一套仍在运行，可能出现 `database is locked` 和 `NativeStatement.finalizeAsync has been rejected`。`expoDatabase.ts` 已设 `PRAGMA busy_timeout = 3000`；验证行为前仍应冷启动（force-stop 后用 dev-client URL 启动）。
+
+### 5.29 前台常驻的首页订阅不能按流式增量刷新
+
+应用内提醒（NT-01）让 `HomeService` 在前台一直订阅最多 8 个会话。最初每个流式增量（约 33 ms 一次）都触发首页重建和每 250 ms 一次的本地重读，模拟器上 JS 线程被占满：键盘避让滞后几秒、受控 `TextInput` 的状态落后于屏幕文字（发送出去的是截断的文本）。现在 `onLiveChanged` 只在 run 状态或待决策变化时刷新（`signature`），聊天页的历史行也按 `history.turns` 记忆化。以后给常驻服务加监听，先确认它不会按增量频率工作。
+
+### 5.30 SSE 用 XHR 读取
+
+React Native 的 `fetch` 不流式返回响应体，`sessions/events` 用 `XMLHttpRequest` 的 progress 事件增量读 `responseText`（`src/platform/xhrEventStream.ts`）。已在模拟器上对 dev stack 验证。服务端约 20 秒发一次 `ping`。
+
+### 5.31 retry/edit 会改写历史尾部
+
+`retry_message` / `edit_message` 生成新的 turn（新 `turn_id`、更大的 `turn_position`），被保留的用户消息 id 不变但移入新 turn，旧 turn 从历史中消失。`saveHistoryPage` 因此把最新一页视为其范围内的全部事实，删除范围内页里没有的缓存 turn。否则会看到重复的旧回复。
+
+### 5.32 dev 模型回复很快，短任务观察不到“正在运行”
+
+应用内“回复完成”提醒只对首页实时看到过运行中的会话触发。外部发起、几秒内完成的任务在订阅建立前就结束了，只会出现在“新结果”里。用长请求（600 字以上）测试提醒。
 
 ## 6. 快速恢复命令
 

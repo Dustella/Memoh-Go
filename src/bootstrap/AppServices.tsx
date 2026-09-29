@@ -2,10 +2,12 @@ import { createContext, useContext, useEffect, useState, useSyncExternalStore, t
 import { AppState } from 'react-native';
 
 import { ConnectionManager, type AccessState } from '../application/access/connectService';
+import { AlertCenter } from '../application/conversation/alertCenter';
 import { ConversationSync } from '../application/conversation/conversationSync';
 import { HomeService } from '../application/conversation/homeService';
 import { LiveSessionPool, OutboxPump } from '../application/conversation/livePool';
 import { RuntimeHub } from '../application/conversation/runtimeHub';
+import { SessionEventsHub } from '../application/conversation/sessionEventsHub';
 import { SessionCreator } from '../application/conversation/sessionCreator';
 import { createLogger, type Logger } from '../core/diagnostics/log';
 import { newId } from '../core/ids';
@@ -17,6 +19,7 @@ import type { FetchFn } from '../data/remote/memohClient';
 import { installPlatformCrypto } from '../platform/installPlatformCrypto';
 import { nativeSocketFactory } from '../platform/nativeSocketFactory';
 import { secureCredentialVault } from '../platform/secureCredentialVault';
+import { xhrEventStream } from '../platform/xhrEventStream';
 import { appPreferences } from '../ui/preferences';
 
 installPlatformCrypto();
@@ -31,6 +34,8 @@ export type AppServices = Readonly<{
   creator: SessionCreator;
   pool: LiveSessionPool;
   home: HomeService;
+  events: SessionEventsHub;
+  alerts: AlertCenter;
   log: Logger;
 }>;
 
@@ -69,17 +74,19 @@ async function createAppServices(): Promise<AppServices> {
   // Sends interrupted by the last process are unconfirmed, never silently resent.
   await markOutboxColdStart(db, Date.now());
   const hub = new RuntimeHub(access, nativeSocketFactory);
+  const events = new SessionEventsHub(access, xhrEventStream);
   const sync = new ConversationSync(db, access, fetchFn, Date.now);
   const creator = new SessionCreator({ db, access, fetchFn, now: Date.now, newId });
   const pool = new LiveSessionPool({ db, access, sync, hub, fetchFn, now: Date.now, newId, log });
   const pump = new OutboxPump({ db, access, sync, hub, fetchFn, now: Date.now, newId, log }, pool);
-  const home = new HomeService({ db, access, sync, pool, now: Date.now, log });
+  const home = new HomeService({ db, access, sync, pool, events, now: Date.now, log });
   let lastAccess = access.state.kind;
   let lastScope = access.state.kind === 'signed_in' ? access.state.session.scope : null;
   const stopBackground = () => {
     pump.stop();
     pool.stopAll();
     hub.closeAll();
+    events.closeAll();
     creator.stop();
     // Home drops its watches and re-reads for the new state (empty when signed out).
     home.restart();
@@ -107,17 +114,26 @@ async function createAppServices(): Promise<AppServices> {
   });
   // A created session's first message is queued: send it even if its screen is closed.
   creator.subscribe(() => void pump.kick());
+  const alerts = new AlertCenter(home, log);
+  // AppState starts as 'unknown' until the first change event; only 'background' means away.
+  const updateAlerts = () =>
+    alerts.setEnabled(AppState.currentState !== 'background' && access.state.kind === 'signed_in' && appPreferences.get().inAppAlerts);
+  access.subscribe(updateAlerts);
+  appPreferences.subscribe(updateAlerts);
   AppState.addEventListener('change', (next) => {
     log.debug('app.state', { state: next });
+    updateAlerts();
     if (next === 'active') {
       hub.wake();
+      events.wake();
       void creator.resume();
       void pump.kick();
     }
   });
+  updateAlerts();
   void creator.resume();
   void pump.kick();
-  return { db, access, sync, hub, fetchFn, creator, pool, home, log };
+  return { db, access, sync, hub, fetchFn, creator, pool, home, events, alerts, log };
 }
 
 let servicesPromise: Promise<AppServices> | undefined;

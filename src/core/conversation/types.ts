@@ -123,6 +123,12 @@ export type RunView = Readonly<{
   user_turns?: readonly Turn[];
   steer_turns?: readonly SteerTurn[];
   steer_supported?: boolean;
+  /**
+   * CH-14: this run replaces the history tail starting at this message
+   * (retry: the reply; edit: the user message). Verified on the dev stack:
+   * the replacement is a new turn, and the kept user message moves into it.
+   */
+  operation?: Readonly<{ kind: 'retry' | 'edit' | string; replace_from_message_id?: string; replacement_user_turn?: Turn }>;
   error_code?: string;
   error?: string;
 }>;

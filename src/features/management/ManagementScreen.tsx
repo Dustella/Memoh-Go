@@ -15,12 +15,12 @@ export function formatDateTime(ms: number) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function InfoRow({ label, value }: { label: string; value: string }) {
+export function InfoRow({ label, value, wrap = false }: { label: string; value: string; wrap?: boolean }) {
   const { colors } = useTheme();
   return (
     <View style={[styles.row, { borderTopColor: colors.border }]}>
       <Text style={[styles.rowLabel, { color: colors.textMuted }]}>{label}</Text>
-      <Text selectable numberOfLines={1} style={[styles.rowValue, { color: colors.text }]}>{value}</Text>
+      <Text selectable numberOfLines={wrap ? undefined : 1} style={[styles.rowValue, { color: colors.text }]}>{value}</Text>
     </View>
   );
 }

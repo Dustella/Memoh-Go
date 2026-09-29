@@ -146,6 +146,33 @@ describe('composeRows', () => {
     ]);
   });
 
+  it('hides the turn a retry replaces and shows its user text once (CH-14)', () => {
+    const saved: Turn[] = [
+      ...persisted,
+      { turn_id: 't9', turn_position: 2, role: 'user', text: 'q9', timestamp: 'x', id: 'mu9' },
+      { turn_id: 't9', turn_position: 2, role: 'assistant', messages: [{ id: 0, type: 'text', content: 'old answer' }], timestamp: 'x', id: 'ma9' },
+    ];
+    const retry = { ...run('running', 't10'), user_turns: [], operation: { kind: 'retry', replace_from_message_id: 'ma9' } };
+    const rows = composeRows({ history: saved, run: retry, pending: [] });
+    expect(rows.map((r) => (r.kind === 'user' ? `u:${r.text}` : r.kind === 'markdown' ? `m:${r.source.trim()}` : r.kind))).toEqual([
+      'u:q1',
+      'm:a1',
+      'u:q9',
+      'm:streaming',
+      'working',
+    ]);
+    // Once the new turn is saved, history alone is shown.
+    const done = [...persisted, { turn_id: 't10', turn_position: 3, role: 'user' as const, text: 'q9', timestamp: 'x', id: 'mu9' }];
+    expect(composeRows({ history: done, run: { ...retry, status: 'completed' }, pending: [] }).map((r) => r.kind)).toEqual(['user', 'markdown', 'user']);
+  });
+
+  it('shows the edited text for an edit run', () => {
+    const saved: Turn[] = [...persisted];
+    const edit = { ...run('running', 't10'), user_turns: [], operation: { kind: 'edit', replace_from_message_id: 'm1', replacement_user_turn: { turn_id: 't10', role: 'user' as const, text: 'q1 fixed', timestamp: 'x' } } };
+    const rows = composeRows({ history: saved, run: edit, pending: [] });
+    expect(rows.map((r) => (r.kind === 'user' ? `u:${r.text}` : r.kind))).toEqual(['u:q1 fixed', 'markdown', 'working']);
+  });
+
   it('marks stopped and failed runs', () => {
     expect(composeRows({ history: [], run: run('aborted'), pending: [] }).at(-1)).toMatchObject({ kind: 'notice', text: '已停止' });
     expect(composeRows({ history: [], run: { ...run('errored'), error: 'model down' }, pending: [] }).at(-1)).toMatchObject({

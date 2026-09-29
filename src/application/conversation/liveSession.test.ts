@@ -251,6 +251,22 @@ describe('LiveSession', () => {
     live.stop();
   });
 
+  it('sends a retry or an edit of the latest turn as its own frame type (CH-14)', async () => {
+    const { live, socket, snapshot } = await setup();
+    await live.start();
+    await flush();
+    socket().open();
+    snapshot();
+    await flush();
+    await live.send('same question', { kind: 'retry', turnId: 't9' });
+    await flush();
+    const retry = socket().sent.find((f) => f.type === 'retry_message');
+    expect(retry).toMatchObject({ session_id: 's1', turn_id: 't9' });
+    expect(retry).not.toHaveProperty('text');
+    expect(socket().sent.filter((f) => f.type === 'message')).toHaveLength(0);
+    live.stop();
+  });
+
   it('streams the run, then settles the send once the turn is in history', async () => {
     const { live, socket, snapshot, rest } = await setup();
     await live.start();

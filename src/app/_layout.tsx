@@ -6,6 +6,7 @@ import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { AppServicesProvider } from '../bootstrap/AppServices';
+import { InAppAlertHost } from '../ui/components/InAppAlertHost';
 import { useT } from '../ui/preferences';
 import { fontSize, navigationColors, spacing, useTheme } from '../ui/theme';
 
@@ -52,6 +53,7 @@ export default function RootLayout() {
           <Stack.Screen name="team" options={{ headerShown: true, title: t('team.title') }} />
           <Stack.Screen name="bot/[botId]/about" options={{ headerShown: true, title: t('nav.botDetail') }} />
         </Stack>
+        <InAppAlertHost />
       </AppServicesProvider>
     </ThemeProvider>
   );

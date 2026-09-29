@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LegendList, type LegendListRef } from '@legendapp/list/react-native';
+import { useFocusEffect } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -11,6 +12,7 @@ import {
 } from 'react-native';
 
 import { isRunActive } from '../../core/conversation/types';
+import { useServices } from '../../bootstrap/AppServices';
 import { t, tn, type MessageKey } from '../../core/i18n';
 import type { OutboxEntry } from '../../core/operations/outbox';
 import { MarkdownBlockView } from '../../ui/markdown/MarkdownBlockView';
@@ -25,7 +27,7 @@ import { StatusStrip } from './components/StatusStrip';
 import type { QueueMode } from '../../application/conversation/sessionQueue';
 import { useSessionQueue } from './useSessionQueue';
 import { QuestionCard, ToolRow, type DecisionActions } from './components/DecisionCards';
-import { composeRows, copyChoices, type ChatRow, type ControlView, type CopyChoice, type PendingSend } from './turnRows';
+import { composeRows, copyChoices, historyRows, type ChatRow, type ControlView, type CopyChoice, type PendingSend } from './turnRows';
 import { useHistory } from './useConversation';
 import { useLiveSession } from './useLiveSession';
 import { useMarkSeen, useReadingAnchor, useRememberChat } from './usePagePersistence';
@@ -227,19 +229,28 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
   const { queue, view: queueView } = useSessionQueue(botId, sessionId, runKey);
   const [queueMode, setQueueMode] = useState<QueueMode>('follow_up');
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- locale: row text is translated
+  const persistedRows = useMemo(() => historyRows(history.turns), [history.turns, locale]);
   const rows = useMemo(() => {
     const pending = [...snapshot.pending, ...snapshot.failed].map(toPending);
     const controls = new Map<string, ControlView>();
     for (const c of snapshot.controls) if (c.decisionId) controls.set(c.decisionId, { status: c.status, code: c.code });
-    const body = composeRows({ history: history.turns, run: snapshot.run, pending, controls, stopping });
+    const body = composeRows({ history: history.turns, run: snapshot.run, pending, controls, stopping, persistedRows });
     if (body.length === 0) return body;
     const state = !history.checkpoint?.hasOlder ? 'beginning' : history.loadingOlder ? 'loading' : 'more';
     return [{ kind: 'edge', key: 'edge', turnId: '', state } as const, ...body];
     // Row text (notices, copy labels) is re-read when the language changes.
-  }, [history.turns, history.checkpoint?.hasOlder, history.loadingOlder, snapshot, stopping, locale]);
+  }, [history.turns, history.checkpoint?.hasOlder, history.loadingOlder, snapshot, stopping, locale, persistedRows]);
 
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
+  const latestRef = useRef<{ turnId: string; userText: string } | null>(null);
+  // The latest turn as displayed: a just-finished live run counts before its history is re-read.
+  const lastUserRow = [...rows].reverse().find((r): r is Extract<ChatRow, { kind: 'user' }> => r.kind === 'user' && !r.steer);
+  latestRef.current = lastUserRow && lastUserRow.turnId ? { turnId: lastUserRow.turnId, userText: lastUserRow.text } : null;
+  const runningRef = useRef(running);
+  runningRef.current = running || snapshot.pending.length > 0;
+  const [editing, setEditing] = useState<{ turnId: string; text: string; nonce: number } | null>(null);
   const [menu, setMenu] = useState<CopyChoice[] | null>(null);
 
   const actions = useMemo<RowActions>(
@@ -250,7 +261,16 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
       approve: (id, decision, optionId) => void live.respondApproval(id, decision, optionId),
       answer: (id, response) => void live.respondUserInput(id, response),
       menu: (row) => {
-        const choices = copyChoices(rowsRef.current, row);
+        const choices: CopyChoice[] = copyChoices(rowsRef.current, row);
+        // CH-14: only the latest saved turn can be replaced, and not while a run is active.
+        const latest = latestRef.current;
+        if (latest && !runningRef.current && row.turnId === latest.turnId) {
+          if (row.kind === 'markdown' || row.kind === 'reasoning' || row.kind === 'tool') {
+            choices.push({ label: t('chat.menu.regenerate'), text: '', action: () => void live.send(latest.userText, { kind: 'retry', turnId: latest.turnId }) });
+          } else if (row.kind === 'user') {
+            choices.push({ label: t('chat.menu.edit'), text: '', action: () => setEditing({ turnId: latest.turnId, text: row.text, nonce: Date.now() }) });
+          }
+        }
         if (choices.length > 0) setMenu(choices);
       },
     }),
@@ -260,8 +280,34 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
 
   useRememberChat(botId, sessionId);
   useMarkSeen(botId, sessionId);
+  const { alerts } = useServices();
+  useFocusEffect(
+    useCallback(() => {
+      alerts.setViewing(botId, sessionId);
+      return () => alerts.setViewing(null);
+    }, [alerts, botId, sessionId]),
+  );
   const { anchor, update: saveAnchor } = useReadingAnchor(botId, sessionId);
   const listRef = useRef<LegendListRef>(null);
+  const atBottomRef = useRef(true);
+  // When a run ends its live rows are replaced by saved history. A steered run
+  // (CH-13) is saved in a different shape, which can move the list; a reader
+  // who was following the reply stays at the newest message.
+  const wasRunning = useRef(running);
+  const followUntil = useRef(0);
+  const refreshAfterRun = history.refresh;
+  useEffect(() => {
+    if (wasRunning.current && !running) {
+      if (atBottomRef.current) followUntil.current = Date.now() + 3_000;
+      // Swap the finished live copy for the saved turns (a steered or replaced
+      // turn is saved in another shape), so later actions target real turns.
+      void refreshAfterRun();
+    }
+    wasRunning.current = running;
+    if (Date.now() > followUntil.current) return;
+    const timer = setTimeout(() => void listRef.current?.scrollToEnd({ animated: false }), 150);
+    return () => clearTimeout(timer);
+  }, [running, rows, refreshAfterRun]);
 
   // Decided once, when the list first mounts: later rows must not move the reader.
   // Opened from a home "needs you" item: the decision is at the newest message.
@@ -279,7 +325,8 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
     const state = listRef.current?.getState();
     if (!state || state.data.length === 0) return;
     const fromEnd = state.contentLength - (state.scroll + state.scrollLength);
-    if (state.isAtEnd || fromEnd < AT_BOTTOM_SLACK_PX) {
+    atBottomRef.current = state.isAtEnd || fromEnd < AT_BOTTOM_SLACK_PX;
+    if (atBottomRef.current) {
       saveAnchor({ atBottom: true });
       return;
     }
@@ -355,8 +402,17 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
         draftKey={sessionId}
         running={running}
         busy={queueView.busy}
+        prefill={editing ? { text: editing.text, nonce: editing.nonce } : undefined}
+        editing={editing !== null}
+        onCancelEdit={() => setEditing(null)}
         onSend={(text) => {
           const toEnd = () => requestAnimationFrame(() => void listRef.current?.scrollToEnd({ animated: true }));
+          if (editing) {
+            void live.send(text, { kind: 'edit', turnId: editing.turnId });
+            setEditing(null);
+            toEnd();
+            return;
+          }
           // While the Bot replies, a new message goes through the server queue (CH-13) when it has one.
           if (running && queueView.support !== 'no') {
             return queue.submit(queueMode, text).then((outcome) => {

@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { useEffect } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useKeyboardVisible } from '../../../ui/components/KeyboardAware';
@@ -18,6 +19,9 @@ export function Composer({
   autoFocus = false,
   placeholder,
   busy = false,
+  prefill,
+  editing = false,
+  onCancelEdit,
   onSend,
   onStop,
 }: {
@@ -29,6 +33,11 @@ export function Composer({
   placeholder?: string;
   /** A send is being handed over (e.g. queueing): the button waits. */
   busy?: boolean;
+  /** Replace the input text (e.g. the message being edited); a new nonce applies it again. */
+  prefill?: Readonly<{ text: string; nonce: number }>;
+  /** CH-14: the next send replaces the latest turn. */
+  editing?: boolean;
+  onCancelEdit?: () => void;
   /** Resolve to 'restore' to put the text back into the input. */
   onSend: (text: string) => void | 'sent' | 'restore' | Promise<'sent' | 'restore'>;
   onStop?: () => void;
@@ -39,6 +48,12 @@ export function Composer({
   const keyboard = useKeyboardVisible();
   const draft = useDraft(botId, draftKey);
   const canSend = draft.text.trim().length > 0;
+  const prefillNonce = prefill?.nonce;
+  useEffect(() => {
+    if (prefill && draft.ready) draft.update(prefill.text);
+    // Only a new nonce (a new "edit" request) replaces the text.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillNonce, draft.ready]);
 
   const send = () => {
     if (!canSend || busy) return;
@@ -58,6 +73,16 @@ export function Composer({
   };
 
   return (
+    <View style={{ backgroundColor: colors.surface }}>
+      {editing ? (
+        <View style={[styles.editBar, { borderTopColor: colors.border }]}>
+          <Ionicons name="create-outline" size={14} color={colors.accent} />
+          <Text style={[styles.editText, { color: colors.textMuted }]}>{t('chat.composer.editing')}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('chat.composer.cancelEdit')} hitSlop={10} onPress={onCancelEdit}>
+            <Ionicons name="close" size={16} color={colors.textSubtle} />
+          </Pressable>
+        </View>
+      ) : null}
     <View
       style={[
         styles.composer,
@@ -96,10 +121,20 @@ export function Composer({
         </Pressable>
       )}
     </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  editBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  editText: { flex: 1, fontSize: fontSize.small },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',

@@ -23,6 +23,11 @@ export function MessageMenu({ choices, onClose }: { choices: readonly CopyChoice
   }, [choices]);
 
   const copy = async (choice: CopyChoice) => {
+    if (choice.action) {
+      onClose();
+      choice.action();
+      return;
+    }
     await Clipboard.setStringAsync(choice.text);
     // Android 13+ shows its own clipboard confirmation; older versions and iOS get none.
     if (Platform.OS === 'android' && Number(Platform.Version) < 33) ToastAndroid.show(t('common.copied'), ToastAndroid.SHORT);

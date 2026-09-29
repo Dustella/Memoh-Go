@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { useAccessState, useServices } from '../../bootstrap/AppServices';
 import { RequireSignIn } from '../../bootstrap/RequireSignIn';
@@ -33,14 +33,24 @@ export default function BotRoute() {
           headerShown: true,
           title: title || t('common.session'),
           headerRight: () => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('botSessions.newChat')}
-              hitSlop={12}
-              onPress={() => router.push({ pathname: '/chat/[botId]/new', params: { botId } })}
-            >
-              <Ionicons name="create-outline" size={22} color={colors.accent} />
-            </Pressable>
+            <View style={{ flexDirection: 'row', gap: 20 }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('botSessions.botInfo')}
+                hitSlop={12}
+                onPress={() => router.push({ pathname: '/bot/[botId]/about', params: { botId } })}
+              >
+                <Ionicons name="information-circle-outline" size={23} color={colors.accent} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('botSessions.newChat')}
+                hitSlop={12}
+                onPress={() => router.push({ pathname: '/chat/[botId]/new', params: { botId } })}
+              >
+                <Ionicons name="create-outline" size={22} color={colors.accent} />
+              </Pressable>
+            </View>
           ),
         }}
       />

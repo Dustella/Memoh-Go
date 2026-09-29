@@ -26,6 +26,7 @@ import {
   type OutboxEntry,
   type Recovery,
 } from '../../core/operations/outbox';
+import type { MessagePayload } from '../../core/operations/outbox';
 import { afterLookup, planRecovery } from '../../core/operations/recovery';
 import { createSessionStream, receiveRuntimeEvent, awaitSnapshot, type RuntimeEvent, type SessionStream } from '../../core/sync/runtimeStream';
 import { loadRuntimeCheckpoint, saveRuntimeCheckpoint, type SessionKey } from '../../data/local/conversationStore';
@@ -209,7 +210,7 @@ export class LiveSession {
   // ------------------------------------------------------------ user actions
 
   /** Queue a message. It is durable before anything touches the network. */
-  async send(text: string) {
+  async send(text: string, replace?: MessagePayload['replace']) {
     const scope = this.scope;
     const trimmed = text.trim();
     if (!scope || !trimmed) return;
@@ -218,7 +219,7 @@ export class LiveSession {
       scope,
       botId: this.botId,
       sessionId: this.sessionId,
-      payload: { text: trimmed },
+      payload: replace ? { text: trimmed, replace } : { text: trimmed },
       now: this.deps.now(),
     });
     await this.persist(entry);
@@ -351,12 +352,23 @@ export class LiveSession {
       if (!head) return;
       const now = this.deps.now();
       if (head.status === 'queued' && head.nextAttemptAt <= now && this.socketStatus === 'open' && this.stream.live) {
-        const sent = this.attachment?.socket.send({
-          type: 'message',
-          invocation_id: head.invocationId,
-          session_id: head.sessionId,
-          text: head.payload.text,
-        });
+        const replace = head.payload.replace;
+        const sent = this.attachment?.socket.send(
+          replace
+            ? {
+                type: replace.kind === 'edit' ? 'edit_message' : 'retry_message',
+                invocation_id: head.invocationId,
+                session_id: head.sessionId,
+                turn_id: replace.turnId,
+                ...(replace.kind === 'edit' ? { text: head.payload.text } : {}),
+              }
+            : {
+                type: 'message',
+                invocation_id: head.invocationId,
+                session_id: head.sessionId,
+                text: head.payload.text,
+              },
+        );
         if (sent) await this.persist(markSent(head, now));
       } else if (head.status === 'unconfirmed' && !head.needsUser && head.nextAttemptAt <= now) {
         await this.recoverHead(head);

@@ -19,12 +19,14 @@ import type { ConnectionManager } from '../access/connectService';
 import type { ConversationSync } from './conversationSync';
 import type { LiveSessionPool } from './livePool';
 import type { LiveSession } from './liveSession';
+import type { SessionEventsHub } from './sessionEventsHub';
 
 /** Hard cap on sessions subscribed for live state at once (U6 fallback). */
 export const WATCH_LIMIT = 8;
 const WATCH_WINDOW_MS = 30 * 60_000;
 const MAX_BOTS_REFRESHED = 20;
 const RELOAD_DEBOUNCE_MS = 250;
+const ACTIVITY_DEBOUNCE_MS = 1_500;
 const BASELINE_KEY = 'home_baseline';
 
 export type HomeSnapshot = Readonly<{
@@ -52,6 +54,8 @@ export type HomeDeps = Readonly<{
   access: ConnectionManager;
   sync: ConversationSync;
   pool: LiveSessionPool;
+  /** Per-Bot activity streams (SS-05): unwatched sessions still surface new results. */
+  events?: SessionEventsHub;
   now: () => number;
   log?: Logger;
 }>;
@@ -77,7 +81,7 @@ export class HomeService {
   private refreshing = false;
   private error: string | null = null;
   private loaded = false;
-  private readonly watched = new Map<string, { live: LiveSession; release: () => void; unsubscribe: () => void; wasActive: boolean }>();
+  private readonly watched = new Map<string, { live: LiveSession; release: () => void; unsubscribe: () => void; wasActive: boolean; signature?: string }>();
   private reloadTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly deps: HomeDeps) {}
@@ -188,8 +192,54 @@ export class HomeService {
     }
     Object.assign(this, { sessions, savedRuns, outbox, seen });
     this.loaded = true;
-    if (this.active) this.updateWatchSet();
+    if (this.active) {
+      this.updateWatchSet();
+      this.updateActivityStreams((await loadBots(db, scope)).slice(0, MAX_BOTS_REFRESHED).map((b) => b.id));
+    }
     this.publish();
+  }
+
+  private readonly streams = new Map<string, () => void>();
+  private readonly dirtyBots = new Set<string>();
+  private activityTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** One activity stream per Bot: a touched session re-reads that Bot's first page. */
+  private updateActivityStreams(botIds: readonly string[]) {
+    const events = this.deps.events;
+    if (!events) return;
+    const wanted = new Set(botIds);
+    for (const [botId, off] of this.streams) {
+      if (wanted.has(botId)) continue;
+      off();
+      this.streams.delete(botId);
+    }
+    for (const botId of wanted) {
+      if (this.streams.has(botId)) continue;
+      this.streams.set(
+        botId,
+        events.subscribe(botId, () => {
+          this.dirtyBots.add(botId);
+          this.activityTimer ??= setTimeout(() => void this.flushActivity(), ACTIVITY_DEBOUNCE_MS);
+        }),
+      );
+    }
+  }
+
+  private async flushActivity() {
+    this.activityTimer = null;
+    const bots = [...this.dirtyBots];
+    this.dirtyBots.clear();
+    if (!this.active) return;
+    await Promise.allSettled(bots.map((b) => this.deps.sync.syncSessions(b)));
+    this.scheduleReload();
+  }
+
+  private closeActivityStreams() {
+    for (const off of this.streams.values()) off();
+    this.streams.clear();
+    this.dirtyBots.clear();
+    if (this.activityTimer) clearTimeout(this.activityTimer);
+    this.activityTimer = null;
   }
 
   private liveRuns(): Map<string, RunSummary> {
@@ -212,13 +262,14 @@ export class HomeService {
       item.release();
       this.watched.delete(key);
     }
+    this.deps.log?.debug('home.watch', { wanted: wanted.size, sessions: this.sessions.length });
     for (const key of wanted) {
       if (this.watched.has(key)) continue;
       const session = this.sessions.find((s) => homeKey(s.botId, s.sessionId) === key);
       if (!session) continue;
       const live = this.deps.pool.get(session.botId, session.sessionId);
       const release = this.deps.pool.retain(live);
-      const item: { live: LiveSession; release: () => void; unsubscribe: () => void; wasActive: boolean } = {
+      const item: { live: LiveSession; release: () => void; unsubscribe: () => void; wasActive: boolean; signature?: string } = {
         live,
         release,
         unsubscribe: () => undefined,
@@ -233,7 +284,12 @@ export class HomeService {
   private onLiveChanged(key: string, botId: string) {
     const item = this.watched.get(key);
     if (!item) return;
-    const run = item.live.getSnapshot().run;
+    const snap = item.live.getSnapshot();
+    const run = snap.run;
+    // Streamed text arrives every ~33 ms; Home only cares about status and pending decisions.
+    const signature = snap.live && run ? `${run.run_id}:${run.status}:${summarizeRun(run, 0).decision ?? ''}` : snap.live ? 'idle' : 'offline';
+    if (signature === item.signature) return;
+    item.signature = signature;
     const activeNow = Boolean(run && isRunActive(run.status));
     // A watched run just finished: its session moved in the list, pull that Bot's page.
     if (item.wasActive && !activeNow) void this.deps.sync.syncSessions(botId).catch(() => undefined).then(() => this.scheduleReload());
@@ -243,6 +299,7 @@ export class HomeService {
   }
 
   private unwatchAll() {
+    this.closeActivityStreams();
     for (const item of this.watched.values()) {
       item.unsubscribe();
       item.release();

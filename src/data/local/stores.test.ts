@@ -156,6 +156,25 @@ describe('history', () => {
     expect((await loadRecentTurns(db, key, 3)).map((t) => t.id)).toEqual(['m9a', 'm10u', 'm10a']);
   });
 
+  it('drops a turn the server replaced (retry/edit, CH-14)', async () => {
+    await saveHistoryPage(db, key, { turns: range(1, 3), direction: 'latest', hasOlder: false }, 1);
+    // Retry of turn 3: new turn id at position 4; the user message keeps its id and moves into it.
+    const retried: Turn[] = [
+      ...range(2, 2),
+      { turn_id: 'turn_retry', turn_position: 4, role: 'user', text: 'q3', timestamp: 't', id: 'm3u' },
+      { turn_id: 'turn_retry', turn_position: 4, role: 'assistant', messages: [{ id: 0, type: 'text', content: 'a3 again' }], timestamp: 't', id: 'm4a' },
+    ];
+    await saveHistoryPage(db, key, { turns: retried, direction: 'latest', hasOlder: true }, 2);
+    expect((await loadRecentTurns(db, key, 100)).map((t) => `${t.turn_id}:${t.role[0]}`)).toEqual([
+      'turn_1:u',
+      'turn_1:a',
+      'turn_2:u',
+      'turn_2:a',
+      'turn_retry:u',
+      'turn_retry:a',
+    ]);
+  });
+
   it('replaces the cache instead of leaving a hole when the latest page does not overlap', async () => {
     await saveHistoryPage(db, key, { turns: range(1, 4), direction: 'latest', hasOlder: false }, 1);
     const result = await saveHistoryPage(db, key, { turns: range(20, 23), direction: 'latest', hasOlder: true }, 2);

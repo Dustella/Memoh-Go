@@ -23,7 +23,10 @@ function executor(db: ExpoExecutor): SqlExecutor {
  */
 export async function openExpoDatabase(fileName: string): Promise<SqlDatabase> {
   const raw = await SQLite.openDatabaseAsync(fileName);
-  await raw.execAsync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+  // busy_timeout: expo-sqlite runs exclusive transactions on a second
+  // connection, and a Fast Refresh in development opens another one; wait
+  // for the lock instead of failing with "database is locked".
+  await raw.execAsync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 3000;');
   const exclusive = createLock();
   const direct = executor(raw);
   const database: SqlDatabase = {

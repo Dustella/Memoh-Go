@@ -13,6 +13,12 @@ export type MessagePayload = Readonly<{
   modelId?: string;
   reasoningEffort?: string;
   workspaceTargetId?: string;
+  /**
+   * CH-14: replace the latest turn instead of adding one. Sent as
+   * `retry_message` (same user text) or `edit_message` (new text); accepted,
+   * deduplicated and recovered exactly like a normal message.
+   */
+  replace?: Readonly<{ kind: 'retry' | 'edit'; turnId: string }>;
 }>;
 
 export type OutboxEntry = Readonly<{

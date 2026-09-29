@@ -147,6 +147,19 @@ export async function saveHistoryPage(db: SqlDatabase, key: SessionKey, page: Hi
       replace = (overlap?.n ?? 0) === 0;
     }
     if (replace) await tx.run(`DELETE FROM turns WHERE ${where}`, keyParams(key));
+    else if (page.direction === 'latest' && pageIds.length > 0) {
+      // The newest page is the whole truth from its first turn on. A retry or
+      // edit (CH-14) replaces the last turn with a new one and moves the kept
+      // user message into it, so cached turns in that range that the page no
+      // longer lists are gone on the server.
+      const marks = pageIds.map(() => '?').join(',');
+      const from = Math.min(...page.turns.map((turn) => turn.turn_position!));
+      await tx.run(`DELETE FROM turns WHERE ${where} AND turn_position >= ? AND turn_id NOT IN (${marks})`, [
+        ...keyParams(key),
+        from,
+        ...pageIds,
+      ]);
+    }
 
     const rowInTurn = new Map<string, number>();
     for (const turn of page.turns) {
