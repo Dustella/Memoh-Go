@@ -54,6 +54,21 @@
 
 `workspace_target_id` 就是上面的 `target_id`；服务端会检查权限并验证目标，失败返回 409。离线目标在选择器里不可选。
 
+## 聊天附件（CH-16）
+
+没有单独的聊天附件上传接口。Web 端（`useComposerAttachments.ts#fileToAttachment`）把文件读成 data URL，直接放进 WS `message` 帧：
+
+```json
+{ "type": "message", "invocation_id": "…", "session_id": "…", "text": "",
+  "attachments": [{ "type": "image", "base64": "data:image/png;base64,…", "mime": "image/png", "name": "chart.png", "size": 7720 }] }
+```
+
+- 服务端 `parseWSClientAttachments` → `attachment.ParseToolInputBundles`：每项需要 `base64`、`path`、`url`、`platform_key`、`content_hash` 之一，否则被忽略；`base64` 可以是 data URL。
+- 文本可以为空，只要有附件（`message text or attachments required`）。
+- WS 连接没有 `SetReadLimit`，单个资源上限是 `media.MaxAssetBytes` = 200 MiB。App 自己限制每个 20 MB、每条 9 个，因为发送时整段 data URL 在 JS 内存里。
+- 另一条路是先上传到工作区再用 `{type, path}` 引用；没有采用，因为模型能否直接“看到”图片取决于服务端解析，Web 端走的是 base64，这条路径最稳。
+- `retry_message` / `edit_message` 不带附件。
+
 ## 推送（NT-02）
 
 服务端没有。见 `docs/12-notifications.md`。

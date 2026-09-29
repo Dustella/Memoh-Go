@@ -1,11 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import type { OutgoingAttachment } from '../../../core/operations/outbox';
+import { formatBytes } from '../../../core/resources/files';
 import { useKeyboardVisible } from '../../../ui/components/KeyboardAware';
 import { useT } from '../../../ui/preferences';
-import { fontSize, spacing, useTheme } from '../../../ui/theme';
+import { fontSize, radius, spacing, useTheme } from '../../../ui/theme';
 import { useDraft } from '../useLiveSession';
 
 /**
@@ -22,6 +24,10 @@ export function Composer({
   prefill,
   editing = false,
   onCancelEdit,
+  attachments = [],
+  attaching = false,
+  onAttach,
+  onRemoveAttachment,
   onSend,
   onStop,
 }: {
@@ -38,6 +44,13 @@ export function Composer({
   /** CH-14: the next send replaces the latest turn. */
   editing?: boolean;
   onCancelEdit?: () => void;
+  /** CH-16: files going with the next send, shown as removable chips. */
+  attachments?: readonly OutgoingAttachment[];
+  /** A pick is being copied into app storage. */
+  attaching?: boolean;
+  /** Omit to hide the attach button (edit mode, queueing while running). */
+  onAttach?: () => void;
+  onRemoveAttachment?: (index: number) => void;
   /** Resolve to 'restore' to put the text back into the input. */
   onSend: (text: string) => void | 'sent' | 'restore' | Promise<'sent' | 'restore'>;
   onStop?: () => void;
@@ -47,7 +60,7 @@ export function Composer({
   const insets = useSafeAreaInsets();
   const keyboard = useKeyboardVisible();
   const draft = useDraft(botId, draftKey);
-  const canSend = draft.text.trim().length > 0;
+  const canSend = (draft.text.trim().length > 0 || attachments.length > 0) && !attaching;
   const prefillNonce = prefill?.nonce;
   useEffect(() => {
     if (prefill && draft.ready) draft.update(prefill.text);
@@ -83,12 +96,51 @@ export function Composer({
           </Pressable>
         </View>
       ) : null}
+      {attachments.length || attaching ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          style={[styles.tray, { borderTopColor: colors.border }]}
+          contentContainerStyle={styles.trayContent}
+        >
+          {attachments.map((a, i) => (
+            <View key={a.uri} style={[styles.chip, { backgroundColor: colors.surfaceMuted }]}>
+              <Ionicons name={a.type === 'image' ? 'image-outline' : a.type === 'video' ? 'videocam-outline' : 'document-outline'} size={14} color={colors.textMuted} />
+              <View style={styles.chipBody}>
+                <Text numberOfLines={1} style={[styles.chipName, { color: colors.text }]}>{a.name}</Text>
+                <Text style={[styles.chipSize, { color: colors.textSubtle }]}>{formatBytes(a.size)}</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('attach.remove', { name: a.name })}
+                hitSlop={10}
+                onPress={() => onRemoveAttachment?.(i)}
+              >
+                <Ionicons name="close-circle" size={18} color={colors.textSubtle} />
+              </Pressable>
+            </View>
+          ))}
+          {attaching ? <ActivityIndicator size="small" color={colors.textMuted} style={styles.chipSpinner} /> : null}
+        </ScrollView>
+      ) : null}
     <View
       style={[
         styles.composer,
         { borderTopColor: colors.border, backgroundColor: colors.surface, paddingBottom: keyboard ? spacing.sm : Math.max(insets.bottom, spacing.sm) },
       ]}
     >
+      {onAttach ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('attach.add')}
+          disabled={attaching}
+          onPress={onAttach}
+          style={({ pressed }) => [styles.attachButton, pressed && { backgroundColor: colors.surfaceMuted }]}
+        >
+          <Ionicons name="add-circle-outline" size={26} color={colors.textMuted} />
+        </Pressable>
+      ) : null}
       <TextInput
         value={draft.text}
         onChangeText={draft.update}
@@ -154,4 +206,12 @@ const styles = StyleSheet.create({
     fontSize: fontSize.body,
   },
   sendButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  attachButton: { width: 40, height: 44, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  tray: { flexGrow: 0, borderTopWidth: StyleSheet.hairlineWidth },
+  trayContent: { alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, maxWidth: 220, borderRadius: radius.md, paddingLeft: spacing.md, paddingRight: spacing.sm, paddingVertical: 6 },
+  chipBody: { flexShrink: 1 },
+  chipName: { fontSize: fontSize.small },
+  chipSize: { fontSize: fontSize.caption },
+  chipSpinner: { marginHorizontal: spacing.md },
 });

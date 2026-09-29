@@ -26,10 +26,13 @@ import {
   type OutboxEntry,
   type Recovery,
 } from '../../core/operations/outbox';
-import type { MessagePayload } from '../../core/operations/outbox';
+import type { MessagePayload, OutgoingAttachment } from '../../core/operations/outbox';
+import { toDataUrl, wireAttachment } from '../../core/resources/attachments';
 
 export type SendOptions = Readonly<{
   replace?: MessagePayload['replace'];
+  /** CH-16: staged files; only for a new message (not retry/edit). */
+  attachments?: readonly OutgoingAttachment[];
   modelId?: string;
   reasoningEffort?: string;
   workspaceTargetId?: string;
@@ -71,6 +74,8 @@ export type LiveDeps = Readonly<{
   tickMs?: number;
   /** Diagnostics (PF-04); identifiers and states only, never message content. */
   log?: Logger;
+  /** CH-16: base64 of a staged attachment; rejects when the file is gone. */
+  readAttachment?: (attachment: OutgoingAttachment) => Promise<string>;
 }>;
 
 const RUNTIME_TYPES = new Set(['runtime_snapshot', 'runtime_delta', 'runtime_dropped']);
@@ -224,9 +229,11 @@ export class LiveSession {
   async send(text: string, options: SendOptions = {}) {
     const scope = this.scope;
     const trimmed = text.trim();
-    if (!scope || !trimmed) return;
+    const attachments = options.replace ? [] : options.attachments ?? [];
+    if (!scope || (!trimmed && attachments.length === 0)) return;
     const payload: MessagePayload = {
       text: trimmed,
+      ...(attachments.length ? { attachments } : {}),
       ...(options.replace ? { replace: options.replace } : {}),
       ...(options.modelId ? { modelId: options.modelId } : {}),
       ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
@@ -271,6 +278,7 @@ export class LiveSession {
     await this.discard(invocationId);
     await this.send(failed.payload.text, {
       replace: failed.payload.replace,
+      attachments: failed.payload.attachments,
       modelId: failed.payload.modelId,
       reasoningEffort: failed.payload.reasoningEffort,
       workspaceTargetId: failed.payload.workspaceTargetId,
@@ -376,6 +384,23 @@ export class LiveSession {
       const now = this.deps.now();
       if (head.status === 'queued' && head.nextAttemptAt <= now && this.socketStatus === 'open' && this.stream.live) {
         const replace = head.payload.replace;
+        // CH-16: read staged files now; a missing file fails the message instead of sending it without them.
+        let attachments: ReturnType<typeof wireAttachment>[] | undefined;
+        if (!replace && head.payload.attachments?.length) {
+          const read = this.deps.readAttachment;
+          try {
+            if (!read) throw new Error('no attachment reader');
+            attachments = [];
+            for (const a of head.payload.attachments) attachments.push(wireAttachment(a, toDataUrl(a.mime, await read(a))));
+          } catch {
+            this.deps.log?.warn('outbox.attachment_unreadable', { session_id: head.sessionId, invocation_id: head.invocationId });
+            await this.persist({ ...head, status: 'failed', lastCode: 'attachment_unreadable', updatedAt: this.deps.now() });
+            this.publish();
+            return;
+          }
+          // The socket may have dropped while the files were read.
+          if (this.socketStatus !== 'open' || !this.stream.live) return;
+        }
         // Per-send overrides (CH-17/18); absent fields keep the session's own preference.
         const overrides = {
           ...(head.payload.modelId ? { model_id: head.payload.modelId } : {}),
@@ -397,6 +422,7 @@ export class LiveSession {
                 invocation_id: head.invocationId,
                 session_id: head.sessionId,
                 text: head.payload.text,
+                ...(attachments ? { attachments } : {}),
                 ...overrides,
               },
         );

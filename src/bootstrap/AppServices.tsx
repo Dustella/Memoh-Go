@@ -11,13 +11,15 @@ import { SessionEventsHub } from '../application/conversation/sessionEventsHub';
 import { SessionCreator } from '../application/conversation/sessionCreator';
 import { createLogger, type Logger } from '../core/diagnostics/log';
 import { newId } from '../core/ids';
+import { referencedUris } from '../core/resources/attachments';
 import { openExpoDatabase } from '../data/local/expoDatabase';
-import { markOutboxColdStart } from '../data/local/outboxStore';
+import { loadPayloadsWithAttachments, markOutboxColdStart } from '../data/local/outboxStore';
 import { loadPreferences, savePreference } from '../data/local/preferencesStore';
 import type { SqlDatabase } from '../data/local/sql';
 import type { FetchFn } from '../data/remote/memohClient';
 import { installPlatformCrypto } from '../platform/installPlatformCrypto';
 import { nativeSocketFactory } from '../platform/nativeSocketFactory';
+import { readAttachmentBase64, sweepStaged } from '../platform/pickFiles';
 import { secureCredentialVault } from '../platform/secureCredentialVault';
 import { xhrEventStream } from '../platform/xhrEventStream';
 import { appPreferences } from '../ui/preferences';
@@ -73,12 +75,20 @@ async function createAppServices(): Promise<AppServices> {
   log.info('app.start', { access: access.state.kind });
   // Sends interrupted by the last process are unconfirmed, never silently resent.
   await markOutboxColdStart(db, Date.now());
+  // CH-16: drop staged attachment copies no unfinished or resendable message needs.
+  try {
+    const removed = sweepStaged(referencedUris(await loadPayloadsWithAttachments(db)));
+    if (removed) log.info('outbox.staged_swept', { removed });
+  } catch (error) {
+    log.warn('outbox.staged_sweep_failed', { error });
+  }
   const hub = new RuntimeHub(access, nativeSocketFactory);
   const events = new SessionEventsHub(access, xhrEventStream);
   const sync = new ConversationSync(db, access, fetchFn, Date.now);
   const creator = new SessionCreator({ db, access, fetchFn, now: Date.now, newId });
-  const pool = new LiveSessionPool({ db, access, sync, hub, fetchFn, now: Date.now, newId, log });
-  const pump = new OutboxPump({ db, access, sync, hub, fetchFn, now: Date.now, newId, log }, pool);
+  const liveDeps = { db, access, sync, hub, fetchFn, now: Date.now, newId, log, readAttachment: readAttachmentBase64 };
+  const pool = new LiveSessionPool(liveDeps);
+  const pump = new OutboxPump(liveDeps, pool);
   const home = new HomeService({ db, access, sync, pool, events, now: Date.now, log });
   let lastAccess = access.state.kind;
   let lastScope = access.state.kind === 'signed_in' ? access.state.session.scope : null;

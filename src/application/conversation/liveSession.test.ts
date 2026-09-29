@@ -12,7 +12,7 @@ import { openNodeDatabase } from '../../../tests/support/nodeDatabase';
 import { ConnectionManager, probeServer, type CredentialVault } from '../access/connectService';
 import { ConversationSync } from './conversationSync';
 import { LiveSessionPool, OutboxPump } from './livePool';
-import { LiveSession } from './liveSession';
+import { LiveSession, type LiveDeps } from './liveSession';
 import { RuntimeHub } from './runtimeHub';
 
 const flush = async () => {
@@ -85,7 +85,7 @@ afterEach(async () => {
   await db.close();
 });
 
-async function setup(options = { lookup: true }) {
+async function setup(options: { lookup: boolean; readAttachment?: LiveDeps['readAttachment'] } = { lookup: true }) {
   const rest = fakeRest(options);
   const sockets: FakeSocket[] = [];
   const factory: SocketFactory = (url, token) => {
@@ -100,7 +100,7 @@ async function setup(options = { lookup: true }) {
   await access.signIn(probe, 'admin', 'pw');
   const sync = new ConversationSync(db, access, rest.fetchFn, () => clock);
   const hub = new RuntimeHub(access, factory);
-  const deps = { db, access, sync, hub, fetchFn: rest.fetchFn, now: () => clock, newId, tickMs: 60_000 };
+  const deps = { db, access, sync, hub, fetchFn: rest.fetchFn, now: () => clock, newId, tickMs: 60_000, readAttachment: options.readAttachment };
   const live = new LiveSession(deps, 'bot', 's1');
   const socket = () => sockets.at(-1)!;
   const snapshot = (seq = 1, run: unknown = null) =>
@@ -264,6 +264,47 @@ describe('LiveSession', () => {
     expect(retry).toMatchObject({ session_id: 's1', turn_id: 't9' });
     expect(retry).not.toHaveProperty('text');
     expect(socket().sent.filter((f) => f.type === 'message')).toHaveLength(0);
+    live.stop();
+  });
+
+  it('inlines staged attachments at send time and allows a message with no text (CH-16)', async () => {
+    const read = async (a: { name: string }) => (a.name === 'a.png' ? 'QUJD' : 'aGk=');
+    const { live, socket, snapshot } = await setup({ lookup: true, readAttachment: read });
+    await live.start();
+    await flush();
+    socket().open();
+    snapshot();
+    await flush();
+    const files = [
+      { type: 'image' as const, uri: 'file:///doc/outbox/1/a.png', name: 'a.png', mime: 'image/png', size: 3 },
+      { type: 'file' as const, uri: 'file:///doc/outbox/2/n.txt', name: 'n.txt', mime: 'text/plain', size: 2 },
+    ];
+    await live.send('', { attachments: files });
+    await flush();
+    const message = socket().sent.find((f) => f.type === 'message');
+    expect(message).toMatchObject({
+      text: '',
+      attachments: [
+        { type: 'image', base64: 'data:image/png;base64,QUJD', mime: 'image/png', name: 'a.png', size: 3 },
+        { type: 'file', base64: 'data:text/plain;base64,aGk=', mime: 'text/plain', name: 'n.txt', size: 2 },
+      ],
+    });
+    // The durable payload keeps only the file references, never the bytes.
+    expect(JSON.stringify(live.getSnapshot().pending[0]?.payload ?? {})).not.toContain('QUJD');
+    live.stop();
+  });
+
+  it('fails a message whose attachment file is gone instead of sending it without it', async () => {
+    const { live, socket, snapshot } = await setup({ lookup: true, readAttachment: async () => Promise.reject(new Error('gone')) });
+    await live.start();
+    await flush();
+    socket().open();
+    snapshot();
+    await flush();
+    await live.send('see file', { attachments: [{ type: 'file', uri: 'file:///x', name: 'x.bin', mime: 'application/octet-stream', size: 1 }] });
+    await flush();
+    expect(socket().sent.filter((f) => f.type === 'message')).toHaveLength(0);
+    expect(live.getSnapshot().failed[0]).toMatchObject({ status: 'failed', lastCode: 'attachment_unreadable' });
     live.stop();
   });
 

@@ -8,8 +8,23 @@ import type { ScopeKey } from '../identity/scope';
  */
 export type OutboxStatus = 'queued' | 'sent' | 'unconfirmed' | 'accepted' | 'settled' | 'failed';
 
+/**
+ * CH-16: a file the user attached. The bytes live in the app's document
+ * directory (`uri`) from the moment of picking, so the intent survives a
+ * crash; they are read and inlined as a data URL only when the frame is sent,
+ * which keeps the SQLite row small. Same shape the web client sends.
+ */
+export type OutgoingAttachment = Readonly<{
+  type: 'image' | 'video' | 'audio' | 'file';
+  uri: string;
+  name: string;
+  mime: string;
+  size: number;
+}>;
+
 export type MessagePayload = Readonly<{
   text: string;
+  attachments?: readonly OutgoingAttachment[];
   modelId?: string;
   reasoningEffort?: string;
   workspaceTargetId?: string;

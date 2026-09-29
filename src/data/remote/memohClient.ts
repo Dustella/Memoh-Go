@@ -307,6 +307,11 @@ export class MemohClient {
     return `${this.baseUrl}${this.bot(botId, `/container/fs/download?path=${encodeURIComponent(path)}`)}`;
   }
 
+  /** FL-04: multipart upload target (`path` = full destination path, `file`). */
+  uploadUrl(botId: string) {
+    return `${this.baseUrl}${this.bot(botId, '/container/fs/upload')}`;
+  }
+
   async listSchedules(token: string, botId: string): Promise<Schedule[]> {
     const { body } = await this.request<{ items?: Schedule[] }>('GET', this.bot(botId, '/schedule'), { token });
     return body.items ?? [];

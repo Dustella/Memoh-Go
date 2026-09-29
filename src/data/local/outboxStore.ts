@@ -107,3 +107,18 @@ export async function pruneSettledOutbox(db: SqlExecutor, olderThan: number): Pr
   const { changes } = await db.run(`DELETE FROM outbox WHERE status = 'settled' AND updated_at < ?`, [olderThan]);
   return changes;
 }
+
+
+/**
+ * CH-16: payloads whose staged files are still needed, in every scope: an
+ * unfinished send, or a failed one the user can still resend. Settled and
+ * discarded messages no longer need their files.
+ */
+export async function loadPayloadsWithAttachments(db: SqlExecutor): Promise<MessagePayload[]> {
+  const rows = await db.all<{ payload_json: string }>(
+    `SELECT payload_json FROM outbox
+     WHERE payload_json LIKE '%"attachments"%'
+       AND status <> 'settled' AND NOT (status = 'failed' AND last_code = 'discarded')`,
+  );
+  return rows.map((r) => JSON.parse(r.payload_json) as MessagePayload);
+}

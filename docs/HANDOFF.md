@@ -451,6 +451,15 @@ M4 的文件分享与图片预览用到这两个原生模块。模拟器开发�
 
 dev-client 的悬浮齿轮默认在右上角，正好压在标题栏按钮（分享、新建会话）上。截图测试前把它拖到屏幕中下部（`adb shell input swipe 972 172 972 1500 600`）。release 构建没有这个按钮。
 
+### 5.37 新增 expo-document-picker 57.0.2 与 expo-image-picker 57.0.20
+
+CH-16 附件与 FL-04 上传用到。`android/` 是提交在仓库里的，没有重新 prebuild：两个库的 AndroidManifest 通过 autolinking 合并进来（image-picker 带 `CAMERA` 权限，拍照时才申请；Android 13+ 选照片走系统照片选择器，不需要存储权限）。`app.json` 里给 image-picker 配了 iOS 权限文案并关闭麦克风，这些只在下次 prebuild / iOS 构建时生效。真机需要重新 `mise run android`。
+
+### 5.38 附件文件的生命周期
+
+选中的文件立刻复制到 `document/outbox/<id>/<name>`（系统不会像 cache 那样清理），Outbox 只存这个路径；发送时才读成 base64。聊天里移除附件会立即删除副本；已发送、已放弃的消息的副本在下次冷启动时由 `sweepStaged` 清理，失败但可以重发的消息保留副本。附件不随草稿保存，离开聊天页未发送的附件会丢失（副本同样在冷启动时清理）。
+
+
 ## 6. 快速恢复命令
 
 ### 6.1 确认设备

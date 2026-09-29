@@ -14,7 +14,7 @@ export type ControlView = Readonly<{ status: ControlStatus; code?: string }>;
 export type ChatRow =
   | Readonly<{ kind: 'edge'; key: string; turnId: ''; state: 'beginning' | 'loading' | 'more' }>
   | Readonly<{ kind: 'working'; key: string; turnId: string; status: string; stopping: boolean }>
-  | Readonly<{ kind: 'pending'; key: string; turnId: ''; invocationId: string; text: string; state: 'sending' | 'unsure' | 'failed' }>
+  | Readonly<{ kind: 'pending'; key: string; turnId: ''; invocationId: string; text: string; attachments?: readonly string[]; state: 'sending' | 'unsure' | 'failed'; code?: string }>
   | Readonly<{ kind: 'user'; key: string; turnId: string; text: string; attachments: number; steer?: boolean }>
   | Readonly<{ kind: 'markdown'; key: string; turnId: string; source: string; first: boolean }>
   | Readonly<{ kind: 'reasoning'; key: string; turnId: string; text: string; durationMs?: number; first: boolean }>
@@ -240,6 +240,10 @@ export type PendingSend = Readonly<{
   invocationId: string;
   text: string;
   turnId?: string;
+  /** CH-16: names of the files going with it. */
+  attachments?: readonly string[];
+  /** Why a failed send failed (e.g. attachment_unreadable). */
+  code?: string;
   /** sending: queued/sent · unsure: lost ack, user must decide · failed: rejected. */
   state: 'sending' | 'unsure' | 'failed';
 }>;
@@ -309,7 +313,16 @@ export function composeRows({ history, run, pending, controls, stopping = false,
 
   for (const p of pending) {
     if (p.turnId && (persisted.has(p.turnId) || p.turnId === liveTurn?.turn_id)) continue;
-    rows.push({ kind: 'pending', key: `p:${p.invocationId}`, turnId: '', invocationId: p.invocationId, text: p.text, state: p.state });
+    rows.push({
+      kind: 'pending',
+      key: `p:${p.invocationId}`,
+      turnId: '',
+      invocationId: p.invocationId,
+      text: p.text,
+      ...(p.attachments?.length ? { attachments: p.attachments } : {}),
+      ...(p.code ? { code: p.code } : {}),
+      state: p.state,
+    });
   }
   return rows;
 }

@@ -58,6 +58,12 @@ export function normalisePath(path: string): string {
   return `/${parts.join('/')}`;
 }
 
+/** A child of `dir`; `name` must already be a single safe segment. */
+export function joinPath(dir: string, name: string): string {
+  const d = normalisePath(dir);
+  return d === '/' ? `/${name}` : `${d}/${name}`;
+}
+
 export function parentPath(path: string): string {
   const p = normalisePath(path);
   if (p === '/') return '/';

@@ -17,10 +17,12 @@ import { t, tn, type MessageKey } from '../../core/i18n';
 import type { OutboxEntry } from '../../core/operations/outbox';
 import { MarkdownBlockView } from '../../ui/markdown/MarkdownBlockView';
 import { KeyboardAware } from '../../ui/components/KeyboardAware';
+import { PickSourceSheet } from '../../ui/components/PickSourceSheet';
 import { useLocale, useT } from '../../ui/preferences';
 import { fontSize, radius, spacing, useTheme } from '../../ui/theme';
 import { chatStatus, type StatusAction } from './chatStatus';
 import { Composer } from './components/Composer';
+import { useAttachments } from './useAttachments';
 import { MessageMenu } from './components/MessageMenu';
 import { QueueBar } from './components/QueueBar';
 import { SendSettingsBar } from './components/SendSettingsBar';
@@ -148,13 +150,25 @@ const Row = memo(function Row({ row, actions }: { row: ChatRow; actions: RowActi
             style={[styles.userBubble, { backgroundColor: colors.userBubble, opacity: row.state === 'sending' ? 0.7 : 1 }]}
           >
             <Text style={[styles.userText, { color: colors.userBubbleText }]}>{row.text}</Text>
+            {row.attachments?.length ? (
+              <View style={styles.pendingFiles}>
+                {row.attachments.map((name, i) => (
+                  <View key={`${name}:${i}`} style={styles.chipRow}>
+                    <Ionicons name="attach" size={13} color={colors.textMuted} />
+                    <Text numberOfLines={1} style={[styles.userMeta, { color: colors.textMuted }]}>{name}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </Pressable>
           <View style={styles.pendingMeta}>
             {row.state === 'sending' ? (
               <Text style={[styles.metaText, { color: tone }]}>{t('chat.sending')}</Text>
             ) : (
               <>
-                <Text style={[styles.metaText, { color: tone }]}>{row.state === 'failed' ? t('chat.sendFailed') : t('chat.sendUnsure')}</Text>
+                <Text style={[styles.metaText, { color: tone }]}>
+                  {row.state === 'failed' ? (row.code === 'attachment_unreadable' ? t('attach.unreadable') : t('chat.sendFailed')) : t('chat.sendUnsure')}
+                </Text>
                 <Pressable
                   accessibilityRole="button"
                   hitSlop={8}
@@ -236,7 +250,14 @@ const Row = memo(function Row({ row, actions }: { row: ChatRow; actions: RowActi
 
 function toPending(entry: OutboxEntry): PendingSend {
   const state = entry.status === 'failed' ? 'failed' : entry.status === 'unconfirmed' && entry.needsUser ? 'unsure' : 'sending';
-  return { invocationId: entry.invocationId, text: entry.payload.text, turnId: entry.turnId, state };
+  return {
+    invocationId: entry.invocationId,
+    text: entry.payload.text,
+    turnId: entry.turnId,
+    state,
+    ...(entry.payload.attachments?.length ? { attachments: entry.payload.attachments.map((a) => a.name) } : {}),
+    ...(entry.status === 'failed' && entry.lastCode ? { code: entry.lastCode } : {}),
+  };
 }
 
 export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: string; sessionId: string; focusLatest?: boolean }) {
@@ -253,6 +274,8 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
   const [queueMode, setQueueMode] = useState<QueueMode>('follow_up');
   const sendSettings = useSendSettings(botId, sessionId);
   const sendOptions = sendSettings.options;
+  const attachments = useAttachments();
+  const [pickOpen, setPickOpen] = useState(false);
   const sendOptionsRef = useRef(sendOptions);
   sendOptionsRef.current = sendOptions;
 
@@ -444,11 +467,22 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
         prefill={editing ? { text: editing.text, nonce: editing.nonce } : undefined}
         editing={editing !== null}
         onCancelEdit={() => setEditing(null)}
+        attachments={attachments.items}
+        attaching={attachments.busy}
+        // Attachments start a new message; they are not offered while editing or queueing behind a reply.
+        onAttach={editing || (running && attachments.items.length === 0) ? undefined : () => setPickOpen(true)}
+        onRemoveAttachment={attachments.remove}
         onSend={(text) => {
           const toEnd = () => requestAnimationFrame(() => void listRef.current?.scrollToEnd({ animated: true }));
           if (editing) {
             void live.send(text, { ...sendOptions, replace: { kind: 'edit', turnId: editing.turnId } });
             setEditing(null);
+            toEnd();
+            return;
+          }
+          // CH-16: attachments always go through the Outbox (the server queue takes text only).
+          if (attachments.items.length > 0) {
+            void live.send(text, { ...sendOptions, attachments: attachments.handOver() });
             toEnd();
             return;
           }
@@ -468,6 +502,7 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
         onStop={() => live.abort()}
       />
       <MessageMenu choices={menu} onClose={() => setMenu(null)} />
+      <PickSourceSheet visible={pickOpen} title={t('attach.title')} onClose={() => setPickOpen(false)} onPick={(s) => void attachments.add(s)} />
     </KeyboardAware>
   );
 }
@@ -499,6 +534,7 @@ const styles = StyleSheet.create({
   reasoning: { fontSize: fontSize.small, lineHeight: 20, borderLeftWidth: 2, paddingLeft: spacing.md, marginTop: spacing.xs },
   notice: { fontSize: fontSize.small, lineHeight: 20 },
   attachments: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingVertical: 2 },
+  pendingFiles: { marginTop: spacing.xs, gap: 2 },
   attachment: {
     flexDirection: 'row',
     alignItems: 'center',
