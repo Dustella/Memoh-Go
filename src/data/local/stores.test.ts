@@ -217,8 +217,8 @@ describe('user state and scope isolation', () => {
     expect(await loadDraft(db, key)).toBe('');
 
     expect(await loadReadingAnchor(db, key)).toBeNull();
-    await saveReadingAnchor(db, key, { atBottom: false, turnId: 'turn_3', role: 'assistant', blockId: 2, offsetPx: 118.5 }, 1);
-    expect(await loadReadingAnchor(db, key)).toEqual({ atBottom: false, turnId: 'turn_3', role: 'assistant', blockId: 2, offsetPx: 118.5 });
+    await saveReadingAnchor(db, key, { atBottom: false, turnId: 'turn_3', rowKey: 'turn_3:a:2:b0', offsetPx: 118.5 }, 1);
+    expect(await loadReadingAnchor(db, key)).toEqual({ atBottom: false, turnId: 'turn_3', rowKey: 'turn_3:a:2:b0', offsetPx: 118.5 });
     await saveReadingAnchor(db, key, { atBottom: true }, 2);
     expect(await loadReadingAnchor(db, key)).toEqual({ atBottom: true });
   });

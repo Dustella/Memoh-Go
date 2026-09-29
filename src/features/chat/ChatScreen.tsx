@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LegendList } from '@legendapp/list/react-native';
+import { LegendList, type LegendListRef } from '@legendapp/list/react-native';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,6 +21,10 @@ import { QuestionCard, ToolRow, type DecisionActions } from './components/Decisi
 import { composeRows, type ChatRow, type ControlView, type PendingSend } from './turnRows';
 import { useHistory } from './useConversation';
 import { useLiveSession } from './useLiveSession';
+import { useReadingAnchor, useRememberChat } from './usePagePersistence';
+
+/** Within this distance of the end the reader counts as "at the newest message". */
+const AT_BOTTOM_SLACK_PX = 80;
 
 const WORKING_LABEL: Record<string, string> = {
   admitting: '准备中',
@@ -208,6 +212,35 @@ export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: str
   );
   const renderItem = useCallback(({ item }: { item: ChatRow }) => <Row row={item} actions={actions} />, [actions]);
 
+  useRememberChat(botId, sessionId);
+  const { anchor, update: saveAnchor } = useReadingAnchor(botId, sessionId);
+  const listRef = useRef<LegendListRef>(null);
+
+  // Decided once, when the list first mounts: later rows must not move the reader.
+  const initialScroll = useRef<{ initialScrollAtEnd: true } | { initialScrollIndex: { index: number; viewOffset: number } } | null>(null);
+  if (initialScroll.current === null && anchor !== undefined && history.loaded && rows.length > 0) {
+    const index = anchor && !anchor.atBottom ? rows.findIndex((r) => r.key === anchor.rowKey) : -1;
+    // An anchor row outside the cached window (or gone) falls back to the newest message.
+    initialScroll.current =
+      index >= 0 && anchor && !anchor.atBottom
+        ? { initialScrollIndex: { index, viewOffset: -anchor.offsetPx } }
+        : { initialScrollAtEnd: true };
+  }
+
+  const onScroll = useCallback(() => {
+    const state = listRef.current?.getState();
+    if (!state || state.data.length === 0) return;
+    const fromEnd = state.contentLength - (state.scroll + state.scrollLength);
+    if (state.isAtEnd || fromEnd < AT_BOTTOM_SLACK_PX) {
+      saveAnchor({ atBottom: true });
+      return;
+    }
+    const index = Math.max(0, state.start);
+    const row = state.data[index] as ChatRow | undefined;
+    if (!row || row.kind === 'edge') return;
+    saveAnchor({ atBottom: false, turnId: row.turnId || row.key, rowKey: row.key, offsetPx: Math.max(0, state.scroll - state.positionAtIndex(index)) });
+  }, [saveAnchor]);
+
   const offline = snapshot.socket !== 'open' || history.error;
   return (
     <KeyboardAvoidingView
@@ -227,12 +260,13 @@ export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: str
         <View style={styles.center}>
           <Text style={[styles.emptyText, { color: colors.textMuted }]}>还没有消息，说点什么吧。</Text>
         </View>
-      ) : !history.loaded || (rows.length === 0 && history.syncing) ? (
+      ) : !history.loaded || anchor === undefined || (rows.length === 0 && history.syncing) ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.textMuted} />
         </View>
       ) : (
         <LegendList
+          ref={listRef}
           data={rows}
           keyExtractor={(row) => row.key}
           renderItem={renderItem}
@@ -240,9 +274,11 @@ export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: str
           estimatedItemSize={80}
           recycleItems
           alignItemsAtEnd
-          initialScrollAtEnd
+          {...initialScroll.current}
           maintainScrollAtEnd
           maintainVisibleContentPosition
+          onScroll={onScroll}
+          scrollEventThrottle={100}
           onStartReached={() => void history.loadOlder()}
           onStartReachedThreshold={0.5}
           keyboardShouldPersistTaps="handled"

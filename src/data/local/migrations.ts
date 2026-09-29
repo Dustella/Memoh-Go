@@ -163,6 +163,23 @@ export const MIGRATIONS: readonly { version: number; up: string }[] = [
       CREATE INDEX session_creations_open ON session_creations (scope, status, created_at);
     `,
   },
+  {
+    version: 4,
+    up: `
+      -- Reading position is a rendered row key (features/chat/turnRows.ts);
+      -- rows without one restore to the bottom.
+      ALTER TABLE reading_anchor ADD COLUMN row_key TEXT;
+
+      -- Small per-scope UI state, e.g. the last open page for cold start.
+      CREATE TABLE ui_state (
+        scope TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (scope, key)
+      );
+    `,
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

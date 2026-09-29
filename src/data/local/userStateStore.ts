@@ -30,19 +30,17 @@ export async function loadDraft(db: SqlExecutor, key: SessionKey): Promise<strin
 
 export type ReadingAnchor =
   | Readonly<{ atBottom: true }>
-  /** Top of the viewport sits `offsetPx` into this block. */
-  | Readonly<{ atBottom: false; turnId: string; role: string; blockId: number; offsetPx: number }>;
+  /** Top of the viewport sits `offsetPx` into the row with this key. */
+  | Readonly<{ atBottom: false; turnId: string; rowKey: string; offsetPx: number }>;
 
 export async function saveReadingAnchor(db: SqlExecutor, key: SessionKey, anchor: ReadingAnchor, now: number) {
-  const detail = anchor.atBottom
-    ? [null, null, null, null]
-    : [anchor.turnId, anchor.role, anchor.blockId, anchor.offsetPx];
+  const detail = anchor.atBottom ? [null, null, null] : [anchor.turnId, anchor.rowKey, anchor.offsetPx];
   await db.run(
-    `INSERT INTO reading_anchor (scope, bot_id, session_id, at_bottom, turn_id, role, block_id, offset_px, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO reading_anchor (scope, bot_id, session_id, at_bottom, turn_id, row_key, offset_px, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (scope, bot_id, session_id) DO UPDATE SET
-       at_bottom = excluded.at_bottom, turn_id = excluded.turn_id, role = excluded.role,
-       block_id = excluded.block_id, offset_px = excluded.offset_px, updated_at = excluded.updated_at`,
+       at_bottom = excluded.at_bottom, turn_id = excluded.turn_id, row_key = excluded.row_key,
+       role = NULL, block_id = NULL, offset_px = excluded.offset_px, updated_at = excluded.updated_at`,
     [...keyParams(key), anchor.atBottom, ...detail, now],
   );
 }
@@ -51,13 +49,37 @@ export async function loadReadingAnchor(db: SqlExecutor, key: SessionKey): Promi
   const row = await db.first<{
     at_bottom: number;
     turn_id: string | null;
-    role: string | null;
-    block_id: number | null;
+    row_key: string | null;
     offset_px: number | null;
-  }>(`SELECT at_bottom, turn_id, role, block_id, offset_px FROM reading_anchor WHERE ${where}`, keyParams(key));
+  }>(`SELECT at_bottom, turn_id, row_key, offset_px FROM reading_anchor WHERE ${where}`, keyParams(key));
   if (!row) return null;
-  if (row.at_bottom || row.turn_id === null || row.role === null || row.block_id === null) return { atBottom: true };
-  return { atBottom: false, turnId: row.turn_id, role: row.role, blockId: row.block_id, offsetPx: row.offset_px ?? 0 };
+  if (row.at_bottom || row.turn_id === null || row.row_key === null) return { atBottom: true };
+  return { atBottom: false, turnId: row.turn_id, rowKey: row.row_key, offsetPx: row.offset_px ?? 0 };
+}
+
+// ---------------------------------------------------------------- ui state
+
+export async function saveUiState(db: SqlExecutor, scope: ScopeKey, key: string, value: unknown, now: number) {
+  await db.run(
+    `INSERT INTO ui_state (scope, key, value, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT (scope, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    [scope, key, JSON.stringify(value), now],
+  );
+}
+
+/** Delete `key` only if it still holds `expected` (a newer writer wins). */
+export async function clearUiStateIf(db: SqlExecutor, scope: ScopeKey, key: string, expected: unknown) {
+  await db.run('DELETE FROM ui_state WHERE scope = ? AND key = ? AND value = ?', [scope, key, JSON.stringify(expected)]);
+}
+
+export async function loadUiState<T>(db: SqlExecutor, scope: ScopeKey, key: string): Promise<T | null> {
+  const row = await db.first<{ value: string }>('SELECT value FROM ui_state WHERE scope = ? AND key = ?', [scope, key]);
+  if (!row) return null;
+  try {
+    return JSON.parse(row.value) as T;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------- capabilities
@@ -92,6 +114,7 @@ const SCOPED_TABLES = [
   'reading_anchor',
   'outbox',
   'session_creations',
+  'ui_state',
 ] as const;
 
 /**
