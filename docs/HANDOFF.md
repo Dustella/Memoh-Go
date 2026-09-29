@@ -188,6 +188,18 @@ npm test
 
 在连接页输入 `http://172.22.2.106:18080`（WSL IP，重启后可能变化），账号 `admin` / `admin123`。模拟器可直接访问 WSL IP。
 
+### 真机（USB，Xiaomi 2206123SC, arm64）登录 dev stack
+
+真机访问不到 WSL IP，且 `.wslconfig` 关闭了 localhostForwarding，所以走两段转发：
+
+1. Windows 上跑一个只绑定 `127.0.0.1:18080` 的 TCP 转发，转到 `172.22.2.106:18080`（开发用脚本，不在仓库里：`net.createServer` 双向 `pipe` 即可）。
+2. `adb -s <serial> reverse tcp:8081 tcp:8081` 和 `adb -s <serial> reverse tcp:18080 tcp:18080`。
+3. 连接页输入 `http://127.0.0.1:18080`。
+
+两台设备同时连着时，每条 adb 命令都要带 `-s`。真机 APK 需要 arm64：`gradlew app:assembleDebug -PreactNativeArchitectures=arm64-v8a,x86_64` 出的 APK 两台都能装。
+
+Gboard 拼音状态下输入网址会上屏全角 `：／．。`，`normaliseDeployment` 和登录用户名会先折叠成半角（密码原样发送）。
+
 ### 占位与模拟（必须在交付前替换或确认）
 
 | 位置 | 性质 | 替换条件 |

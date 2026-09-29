@@ -13,6 +13,11 @@ describe('normaliseDeployment', () => {
   it('rejects non-http schemes', () => {
     expect(() => normaliseDeployment('ftp://host')).toThrow(/Unsupported/);
   });
+
+  it('folds full-width punctuation committed by a Chinese IME', () => {
+    expect(normaliseDeployment('ＨＴＴＰ：／／192．168。1.5：18080／')).toBe('http://192.168.1.5:18080');
+    expect(normaliseDeployment('\u3000memoh.example.com\u3000')).toBe('https://memoh.example.com');
+  });
 });
 
 describe('scopeKey', () => {

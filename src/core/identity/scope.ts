@@ -12,9 +12,21 @@ export type Scope = Readonly<{
 
 export type ScopeKey = string & { readonly __brand: 'ScopeKey' };
 
+/**
+ * Fold full-width characters to ASCII. A Chinese IME (e.g. Gboard pinyin)
+ * commits `：` `／` `．` `。` and full-width letters/digits while the user types
+ * an address, which would otherwise make every URL unparseable.
+ */
+export function foldFullWidth(input: string): string {
+  return input
+    .replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/\u3000/g, ' ')
+    .replace(/\u3002/g, '.');
+}
+
 /** Normalise a user-entered server address into a stable origin. */
 export function normaliseDeployment(input: string): string {
-  const trimmed = input.trim();
+  const trimmed = foldFullWidth(input).trim();
   const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
   const url = new URL(withScheme);
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {

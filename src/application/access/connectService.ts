@@ -11,7 +11,7 @@ import {
   refreshDue,
   type Credential,
 } from '../../core/identity/credential';
-import { normaliseDeployment, scopeKey, type ScopeKey } from '../../core/identity/scope';
+import { foldFullWidth, normaliseDeployment, scopeKey, type ScopeKey } from '../../core/identity/scope';
 import { checkServerCompatibility, MIN_SERVER_VERSION } from '../../core/identity/serverVersion';
 import { replaceBots } from '../../data/local/conversationStore';
 import {
@@ -167,12 +167,14 @@ export class ConnectionManager {
     let accountId: string;
     let displayName: string;
     let resolvedUsername: string;
+    // A Chinese IME can commit full-width letters; the password is sent verbatim.
+    const typedUsername = foldFullWidth(username).trim();
     try {
-      const login = await client.login(username.trim(), password);
+      const login = await client.login(typedUsername, password);
       credential = credentialFromResponse(login.body, now, login.serverDate);
       const account = await client.me(credential.accessToken);
       accountId = account.id;
-      resolvedUsername = account.username || login.body.username || username.trim();
+      resolvedUsername = account.username || login.body.username || typedUsername;
       displayName = account.display_name || login.body.display_name || resolvedUsername;
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) return { kind: 'invalid_credentials' };

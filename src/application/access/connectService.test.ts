@@ -145,6 +145,14 @@ describe('sign in and restore', () => {
     expect(manager.state.kind).toBe('loading');
   });
 
+  it('accepts a username committed in full-width by a Chinese IME', async () => {
+    const { manager, deps } = setup();
+    const probe = await probeServer(deps, 'ｍｅｍｏｈ．ｅｘａｍｐｌｅ');
+    if (probe.kind !== 'ok') throw new Error(probe.kind);
+    expect((await manager.signIn(probe, 'ａｄｍｉｎ', 'admin123')).kind).not.toBe('invalid_credentials');
+    expect(manager.state.kind).toBe('signed_in');
+  });
+
   it('keeps one connection per account across repeated sign-ins', async () => {
     const { manager, probe } = await signedIn();
     const first = manager.state.kind === 'signed_in' ? manager.state.session.connection.connectionId : '';
