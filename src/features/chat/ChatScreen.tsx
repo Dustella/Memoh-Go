@@ -15,13 +15,13 @@ import {
 import { isRunActive } from '../../core/conversation/types';
 import type { OutboxEntry } from '../../core/operations/outbox';
 import { MarkdownBlockView } from '../../ui/markdown/MarkdownBlockView';
-import { fontSize, monoFont, radius, spacing, useTheme } from '../../ui/theme';
+import { fontSize, radius, spacing, useTheme } from '../../ui/theme';
 import { Composer } from './components/Composer';
-import { composeRows, type ChatRow, type PendingSend } from './turnRows';
+import { QuestionCard, ToolRow, type DecisionActions } from './components/DecisionCards';
+import { composeRows, type ChatRow, type ControlView, type PendingSend } from './turnRows';
 import { useHistory } from './useConversation';
 import { useLiveSession } from './useLiveSession';
 
-const TOOL_LABEL = { running: '运行中', done: '已完成', failed: '失败', awaiting: '等待确认' } as const;
 const WORKING_LABEL: Record<string, string> = {
   admitting: '准备中',
   running: '正在回复',
@@ -69,11 +69,12 @@ function Working({ status }: { status: string }) {
   );
 }
 
-type RowActions = Readonly<{
-  resend: (invocationId: string) => void;
-  discard: (invocationId: string) => void;
-  retry: (invocationId: string) => void;
-}>;
+type RowActions = DecisionActions &
+  Readonly<{
+    resend: (invocationId: string) => void;
+    discard: (invocationId: string) => void;
+    retry: (invocationId: string) => void;
+  }>;
 
 const Row = memo(function Row({ row, actions }: { row: ChatRow; actions: RowActions }) {
   const { colors } = useTheme();
@@ -128,7 +129,7 @@ const Row = memo(function Row({ row, actions }: { row: ChatRow; actions: RowActi
       );
     }
     case 'working':
-      return <Working status={row.status} />;
+      return <Working status={row.stopping ? 'aborting' : row.status} />;
     case 'markdown':
       return (
         <View style={[styles.assistant, top]}>
@@ -141,18 +142,18 @@ const Row = memo(function Row({ row, actions }: { row: ChatRow; actions: RowActi
           <Reasoning text={row.text} durationMs={row.durationMs} />
         </View>
       );
-    case 'tool': {
-      const tone = row.state === 'failed' ? colors.danger : row.state === 'awaiting' ? colors.warning : colors.textMuted;
+    case 'tool':
       return (
         <View style={[styles.assistant, top]}>
-          <View style={[styles.tool, { backgroundColor: colors.surfaceMuted }]}>
-            <Ionicons name="construct-outline" size={14} color={tone} />
-            <Text numberOfLines={1} style={[styles.toolName, { color: colors.text, fontFamily: monoFont }]}>{row.name}</Text>
-            <Text style={[styles.chipText, { color: tone }]}>{TOOL_LABEL[row.state]}</Text>
-          </View>
+          <ToolRow key={row.key} row={row} actions={actions} />
         </View>
       );
-    }
+    case 'question':
+      return (
+        <View style={[styles.assistant, top]}>
+          <QuestionCard key={row.request.user_input_id} row={row} actions={actions} />
+        </View>
+      );
     case 'attachments':
       return (
         <View style={[styles.assistant, top]}>
@@ -181,20 +182,27 @@ export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: str
   const history = useHistory(botId, sessionId);
   const { live, snapshot } = useLiveSession(botId, sessionId);
   const running = Boolean(snapshot.run && isRunActive(snapshot.run.status));
+  const stopping =
+    snapshot.run?.status === 'aborting' ||
+    snapshot.controls.some((c) => c.kind === 'abort' && c.runId === snapshot.run?.run_id && (c.status === 'sending' || c.status === 'sent' || c.status === 'applied'));
 
   const rows = useMemo(() => {
     const pending = [...snapshot.pending, ...snapshot.failed].map(toPending);
-    const body = composeRows({ history: history.turns, run: snapshot.run, pending });
+    const controls = new Map<string, ControlView>();
+    for (const c of snapshot.controls) if (c.decisionId) controls.set(c.decisionId, { status: c.status, code: c.code });
+    const body = composeRows({ history: history.turns, run: snapshot.run, pending, controls, stopping });
     if (body.length === 0) return body;
     const state = !history.checkpoint?.hasOlder ? 'beginning' : history.loadingOlder ? 'loading' : 'more';
     return [{ kind: 'edge', key: 'edge', turnId: '', state } as const, ...body];
-  }, [history.turns, history.checkpoint?.hasOlder, history.loadingOlder, snapshot]);
+  }, [history.turns, history.checkpoint?.hasOlder, history.loadingOlder, snapshot, stopping]);
 
   const actions = useMemo<RowActions>(
     () => ({
       resend: (id) => void live.confirmResend(id),
       discard: (id) => void live.discard(id),
       retry: (id) => void live.retryFailed(id),
+      approve: (id, decision, optionId) => void live.respondApproval(id, decision, optionId),
+      answer: (id, response) => void live.respondUserInput(id, response),
     }),
     [live],
   );
@@ -280,16 +288,5 @@ const styles = StyleSheet.create({
   chipText: { fontSize: fontSize.small },
   dot: { width: 8, height: 8, borderRadius: 4 },
   reasoning: { fontSize: fontSize.small, lineHeight: 20, borderLeftWidth: 2, paddingLeft: spacing.md, marginTop: spacing.xs },
-  tool: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  toolName: { fontSize: fontSize.small, flexShrink: 1 },
   notice: { fontSize: fontSize.small, lineHeight: 20 },
 });

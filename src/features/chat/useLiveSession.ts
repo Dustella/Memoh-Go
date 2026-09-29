@@ -4,7 +4,7 @@ import type { LiveSnapshot } from '../../application/conversation/liveSession';
 import { useAccessState, useServices } from '../../bootstrap/AppServices';
 import { loadDraft, saveDraft } from '../../data/local/userStateStore';
 
-const IDLE: LiveSnapshot = { run: null, live: false, socket: 'closed', pending: [], failed: [] };
+const IDLE: LiveSnapshot = { run: null, live: false, socket: 'closed', pending: [], failed: [], controls: [] };
 const noopSubscribe = () => () => undefined;
 
 /** The pooled LiveSession of one conversation, held while the screen is mounted. */

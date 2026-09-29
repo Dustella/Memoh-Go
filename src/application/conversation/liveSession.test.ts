@@ -105,7 +105,7 @@ async function setup(options = { lookup: true }) {
   const socket = () => sockets.at(-1)!;
   const snapshot = (seq = 1, run: unknown = null) =>
     socket().emit({ type: 'runtime_snapshot', session_id: 's1', epoch: 'e1', seq, snapshot: { bot_id: 'bot', session_id: 's1', epoch: 'e1', seq, current_run_view: run, updated_at: 'x' } });
-  return { rest, sockets, socket, access, live, deps, snapshot, tick: (ms: number) => (clock += ms) };
+  return { rest, sockets, socket, access, live, deps, hub, snapshot, tick: (ms: number) => (clock += ms) };
 }
 
 const runView = (invocationId: string, status: string, text = '') => ({
@@ -119,6 +119,86 @@ const runView = (invocationId: string, status: string, text = '') => ({
 });
 
 describe('LiveSession', () => {
+  const waitingRun = (approvalStatus: string) => ({
+    ...runView('inv-a', approvalStatus === 'pending' ? 'waiting_decision' : 'running'),
+    messages: [
+      {
+        id: 0,
+        type: 'tool',
+        name: 'exec',
+        tool_call_id: 'call-1',
+        input: { command: 'echo hi' },
+        running: true,
+        approval: { approval_id: 'appr-1', status: approvalStatus, can_approve: true },
+      },
+    ],
+  });
+
+  it('approves once; a lost ack is resent with the same control id; the server answer settles it', async () => {
+    const { live, socket, snapshot, sockets, hub } = await setup();
+    await live.start();
+    await flush();
+    socket().open();
+    snapshot(1, waitingRun('pending'));
+    await flush();
+
+    expect(live.respondApproval('appr-1', 'approve')).toBe(true);
+    expect(live.respondApproval('appr-1', 'approve')).toBe(false); // already in flight
+    const first = socket().sent.find((f) => f.type === 'tool_approval_response')!;
+    expect(first).toMatchObject({ run_id: 'r1', session_id: 's1', decision_id: 'appr-1', decision: 'approve' });
+
+    socket().drop();
+    await flush();
+    expect(live.getSnapshot().controls[0]?.status).toBe('sending');
+    hub.wake();
+    await flush();
+    socket().open();
+    await flush();
+    const resent = socket().sent.find((f) => f.type === 'tool_approval_response')!;
+    expect(resent.control_id).toBe(first.control_id);
+    expect(sockets.length).toBe(2);
+
+    socket().emit({ type: 'control_ack', session_id: 's1', control: 'tool_approval_response', control_id: first.control_id, applied: true });
+    await flush();
+    expect(live.getSnapshot().controls[0]?.status).toBe('applied');
+    live.stop();
+  });
+
+  it('a question answered on another device closes the local request', async () => {
+    const { live, socket, snapshot } = await setup();
+    await live.start();
+    await flush();
+    socket().open();
+    const ask = (status: string) => ({
+      ...runView('inv-a', 'waiting_decision'),
+      messages: [{ id: 0, type: 'tool', name: 'ask_user', user_input: { user_input_id: 'ui-1', status, questions: [{ id: 'q1', text: 'Colour?', kind: 'single_select', options: [{ id: 'o1', label: 'Red' }] }] } }],
+    });
+    snapshot(1, ask('pending'));
+    await flush();
+    live.respondUserInput('ui-1', { answers: [{ question_id: 'q1', option_ids: ['o1'] }] });
+    expect(socket().sent.find((f) => f.type === 'user_input_response')).toMatchObject({ decision_id: 'ui-1', answers: [{ question_id: 'q1', option_ids: ['o1'] }] });
+    socket().emit({ type: 'runtime_delta', session_id: 's1', epoch: 'e1', seq: 2, delta: { current_run_view: ask('submitted') } });
+    await flush();
+    expect(live.getSnapshot().controls[0]?.status).toBe('stale');
+    live.stop();
+  });
+
+  it('stop is sent once and reports a run that had already ended', async () => {
+    const { live, socket, snapshot } = await setup();
+    await live.start();
+    await flush();
+    socket().open();
+    snapshot(1, runView('inv-a', 'running'));
+    await flush();
+    expect(live.abort()).toBe(true);
+    expect(live.abort()).toBe(true);
+    const aborts = socket().sent.filter((f) => f.type === 'abort');
+    expect(aborts).toHaveLength(1);
+    socket().emit({ type: 'control_ack', session_id: 's1', control: 'abort', control_id: aborts[0]!.control_id, applied: false });
+    await flush();
+    expect(live.getSnapshot().controls[0]?.status).toBe('stale');
+    live.stop();
+  });
   it('the pump sends a queued message with no screen open, then lets the session go', async () => {
     const { deps, socket, snapshot, rest, access } = await setup();
     const scope = access.state.kind === 'signed_in' ? access.state.session.scope : null!;

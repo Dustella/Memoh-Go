@@ -3,6 +3,18 @@ import { observeRunAccepted } from '../../core/identity/capabilities';
 import type { ScopeKey } from '../../core/identity/scope';
 import { lookupInvocation, type LookupRequest } from '../../core/operations/invocationLookup';
 import {
+  abortControl,
+  approvalControl,
+  isControlOpen,
+  markControlSent,
+  onControlAck,
+  onControlDisconnected,
+  onDecisionSettled,
+  userInputControl,
+  type AnswerInput,
+  type ControlRequest,
+} from '../../core/operations/controls';
+import {
   createOutboxEntry,
   markSent,
   onAckLost,
@@ -34,6 +46,8 @@ export type LiveSnapshot = Readonly<{
   pending: readonly OutboxEntry[];
   /** Failed sends still shown so the user can resend or discard. */
   failed: readonly OutboxEntry[];
+  /** Stop / approval / answer requests on the current run (in memory only). */
+  controls: readonly ControlRequest[];
 }>;
 
 export type LiveDeps = Readonly<{
@@ -64,6 +78,7 @@ export class LiveSession {
   private socketStatus: SocketStatus = 'closed';
   private entries: OutboxEntry[] = [];
   private failed: OutboxEntry[] = [];
+  private controls: ControlRequest[] = [];
   private attachment: { socket: RuntimeSocket; detach: () => void } | null = null;
   private readonly listeners = new Set<() => void>();
   private snapshot: LiveSnapshot;
@@ -106,7 +121,14 @@ export class LiveSession {
   getSnapshot = () => this.snapshot;
 
   private buildSnapshot(): LiveSnapshot {
-    return { run: this.stream.run, live: this.stream.live, socket: this.socketStatus, pending: this.entries, failed: this.failed };
+    return {
+      run: this.stream.run,
+      live: this.stream.live,
+      socket: this.socketStatus,
+      pending: this.entries,
+      failed: this.failed,
+      controls: this.controls,
+    };
   }
 
   private publish() {
@@ -216,18 +238,82 @@ export class LiveSession {
     await this.send(failed.payload.text);
   }
 
-  /** Stop the running turn. Best effort: control acks are not persisted. */
-  abort() {
+  /** Stop the running turn. Idempotent while a stop is in flight. */
+  abort(): boolean {
     const run = this.stream.run;
-    if (!run || !isRunActive(run.status)) return false;
-    return (
-      this.attachment?.socket.send({
-        type: 'abort',
-        run_id: run.run_id,
-        session_id: this.sessionId,
-        control_id: this.deps.newId(),
-      }) ?? false
+    if (!run || !isRunActive(run.status) || run.status === 'aborting') return false;
+    if (this.controls.some((c) => c.kind === 'abort' && c.runId === run.run_id && isControlOpen(c))) return true;
+    this.addControl(abortControl({ controlId: this.deps.newId(), runId: run.run_id, sessionId: this.sessionId }));
+    return true;
+  }
+
+  /** Answer a pending tool approval of the live run. */
+  respondApproval(approvalId: string, decision: 'approve' | 'reject', optionId?: string): boolean {
+    const run = this.stream.run;
+    if (!run || !isRunActive(run.status) || this.hasOpenControl(approvalId)) return false;
+    this.addControl(
+      approvalControl({ controlId: this.deps.newId(), runId: run.run_id, sessionId: this.sessionId, approvalId, decision, optionId }),
     );
+    return true;
+  }
+
+  /** Answer (or cancel) a pending ask_user question of the live run. */
+  respondUserInput(userInputId: string, response: { answers: readonly AnswerInput[] } | { canceled: true }): boolean {
+    const run = this.stream.run;
+    if (!run || !isRunActive(run.status) || this.hasOpenControl(userInputId)) return false;
+    this.addControl(
+      userInputControl({
+        controlId: this.deps.newId(),
+        runId: run.run_id,
+        sessionId: this.sessionId,
+        userInputId,
+        ...('canceled' in response ? { canceled: true } : { answers: response.answers }),
+      }),
+    );
+    return true;
+  }
+
+  private hasOpenControl(decisionId: string) {
+    return this.controls.some((c) => c.decisionId === decisionId && isControlOpen(c));
+  }
+
+  private addControl(control: ControlRequest) {
+    // A new request for the same decision replaces an earlier failed one.
+    this.controls = [...this.controls.filter((c) => !(control.decisionId && c.decisionId === control.decisionId)), control];
+    this.flushControls();
+    this.publish();
+  }
+
+  private replaceControl(next: ControlRequest) {
+    this.controls = this.controls.map((c) => (c.controlId === next.controlId ? next : c));
+  }
+
+  /** Send every control that is waiting for a connection. */
+  private flushControls() {
+    if (this.socketStatus !== 'open' || !this.attachment) return;
+    for (const c of this.controls) {
+      if (c.status !== 'sending') continue;
+      if (this.attachment.socket.send({ ...c.frame })) this.replaceControl(markControlSent(c));
+    }
+  }
+
+  /** Close requests whose decision (or run) is no longer pending in the live view. */
+  private settleControls() {
+    const run = this.stream.run;
+    const pendingDecisions = new Set<string>();
+    for (const block of run?.messages ?? []) {
+      if (block.approval?.status === 'pending') pendingDecisions.add(block.approval.approval_id);
+      if (block.user_input?.status === 'pending') pendingDecisions.add(block.user_input.user_input_id);
+    }
+    const active = run && isRunActive(run.status);
+    this.controls = this.controls
+      // Requests for an older run are history once a new run is live.
+      .filter((c) => !run || c.runId === run.run_id)
+      .map((c) => {
+        if (!active) return onDecisionSettled(c);
+        if (c.decisionId && !pendingDecisions.has(c.decisionId)) return onDecisionSettled(c);
+        return c;
+      });
   }
 
   private async applyRecovery(invocationId: string, step: Recovery) {
@@ -316,9 +402,12 @@ export class LiveSession {
     this.socketStatus = status;
     if (status !== 'open') {
       this.stream = awaitSnapshot(this.stream);
+      this.controls = this.controls.map(onControlDisconnected);
       // Anything in flight lost its ack with the connection.
       const now = this.deps.now();
       for (const entry of this.entries.filter((e) => e.status === 'sent')) await this.persist(onAckLost(entry, now));
+    } else {
+      this.flushControls();
     }
     this.publish();
     void this.work();
@@ -337,6 +426,15 @@ export class LiveSession {
       this.publish();
       // A fresh snapshot is what queued sends wait for.
       if (!wasLive && this.stream.live) void this.work();
+      return;
+    }
+
+    if (event.type === 'control_ack') {
+      const control = this.controls.find((c) => c.controlId === event.control_id);
+      if (!control) return;
+      this.replaceControl(onControlAck(control, { applied: event.applied === true, code: typeof event.code === 'string' && event.code ? event.code : undefined }));
+      this.flushControls();
+      this.publish();
       return;
     }
 
@@ -364,6 +462,7 @@ export class LiveSession {
   }
 
   private async onRunChanged() {
+    this.settleControls();
     const run = this.stream.run;
     if (!run) return;
     const now = this.deps.now();

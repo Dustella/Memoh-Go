@@ -6,6 +6,31 @@ import type { Turn } from '../../core/conversation/types';
 import { composeRows, historyRows, turnRows } from './turnRows';
 
 describe('turnRows', () => {
+  it('live pending decisions are interactive and carry their control state; history ones are not', () => {
+    const run = {
+      run_id: 'r1',
+      turn_id: 'live',
+      status: 'waiting_decision',
+      started_at: 'a',
+      updated_at: 'b',
+      messages: [
+        { id: 0, type: 'tool' as const, name: 'exec', input: { command: 'ls -la' }, approval: { approval_id: 'ap', status: 'pending' } },
+        { id: 1, type: 'tool' as const, name: 'ask_user', user_input: { user_input_id: 'ui', status: 'pending', questions: [] } },
+      ],
+    };
+    const controls = new Map([['ap', { status: 'sent' as const }]]);
+    const rows = composeRows({ history: [], run, pending: [], controls });
+    const tool = rows.find((r) => r.kind === 'tool');
+    expect(tool).toMatchObject({ interactive: true, summary: 'ls -la', control: { status: 'sent' } });
+    expect(rows.find((r) => r.kind === 'question')).toMatchObject({ interactive: true, request: { user_input_id: 'ui' } });
+
+    const stopping = composeRows({ history: [], run, pending: [], controls, stopping: true });
+    expect(stopping.find((r) => r.kind === 'tool')).toMatchObject({ interactive: false });
+    expect(stopping.find((r) => r.kind === 'working')).toMatchObject({ stopping: true });
+
+    const persisted = turnRows({ turn_id: 'old', role: 'assistant', timestamp: 'x', messages: run.messages });
+    expect(persisted.every((r) => !('interactive' in r) || r.interactive === false)).toBe(true);
+  });
   it('maps a real captured turn to a user bubble and one markdown row', () => {
     const rows = historyRows((capturedHistory as { items: Turn[] }).items);
     expect(rows.map((r) => r.kind)).toEqual(['user', 'markdown']);

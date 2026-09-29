@@ -76,6 +76,13 @@ export default function MainTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="decisions-preview"
+        options={{
+          href: null,
+          title: '审批卡片预览',
+        }}
+      />
+      <Tabs.Screen
         name="bench"
         options={{
           href: null,

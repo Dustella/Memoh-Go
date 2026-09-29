@@ -41,6 +41,15 @@ export type UserInputRequest = Readonly<{
   user_input_id: string;
   status: string;
   questions?: readonly UserInputQuestion[];
+  /** Display projection of what was answered (internal/agent/decision/input UIAnswer). */
+  answers?: readonly Readonly<{
+    question_id: string;
+    question?: string;
+    selected?: readonly { id: string; label: string }[];
+    custom_text?: string;
+    text?: string;
+    skipped?: boolean;
+  }>[];
   can_respond?: boolean;
 }>;
 
