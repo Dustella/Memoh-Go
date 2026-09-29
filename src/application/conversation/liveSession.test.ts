@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { Turn } from '../../core/conversation/types';
 import { newId } from '../../core/ids';
-import { loadOutboxEntry, loadPendingOutbox } from '../../data/local/outboxStore';
+import { createOutboxEntry } from '../../core/operations/outbox';
+import { loadOutboxEntry, loadPendingOutbox, saveOutboxEntry } from '../../data/local/outboxStore';
 import { loadRecentTurns } from '../../data/local/conversationStore';
 import type { SqlDatabase } from '../../data/local/sql';
 import type { FetchFn } from '../../data/remote/memohClient';
@@ -10,6 +11,7 @@ import type { SocketFactory, SocketLike } from '../../data/remote/runtimeSocket'
 import { openNodeDatabase } from '../../../tests/support/nodeDatabase';
 import { ConnectionManager, probeServer, type CredentialVault } from '../access/connectService';
 import { ConversationSync } from './conversationSync';
+import { LiveSessionPool, OutboxPump } from './livePool';
 import { LiveSession } from './liveSession';
 import { RuntimeHub } from './runtimeHub';
 
@@ -98,11 +100,12 @@ async function setup(options = { lookup: true }) {
   await access.signIn(probe, 'admin', 'pw');
   const sync = new ConversationSync(db, access, rest.fetchFn, () => clock);
   const hub = new RuntimeHub(access, factory);
-  const live = new LiveSession({ db, access, sync, hub, fetchFn: rest.fetchFn, now: () => clock, newId, tickMs: 60_000 }, 'bot', 's1');
+  const deps = { db, access, sync, hub, fetchFn: rest.fetchFn, now: () => clock, newId, tickMs: 60_000 };
+  const live = new LiveSession(deps, 'bot', 's1');
   const socket = () => sockets.at(-1)!;
   const snapshot = (seq = 1, run: unknown = null) =>
     socket().emit({ type: 'runtime_snapshot', session_id: 's1', epoch: 'e1', seq, snapshot: { bot_id: 'bot', session_id: 's1', epoch: 'e1', seq, current_run_view: run, updated_at: 'x' } });
-  return { rest, sockets, socket, access, live, snapshot, tick: (ms: number) => (clock += ms) };
+  return { rest, sockets, socket, access, live, deps, snapshot, tick: (ms: number) => (clock += ms) };
 }
 
 const runView = (invocationId: string, status: string, text = '') => ({
@@ -116,6 +119,34 @@ const runView = (invocationId: string, status: string, text = '') => ({
 });
 
 describe('LiveSession', () => {
+  it('the pump sends a queued message with no screen open, then lets the session go', async () => {
+    const { deps, socket, snapshot, rest, access } = await setup();
+    const scope = access.state.kind === 'signed_in' ? access.state.session.scope : null!;
+    await saveOutboxEntry(db, createOutboxEntry({ invocationId: 'inv-bg', scope, botId: 'bot', sessionId: 's1', payload: { text: 'from the background' }, now: 1 }));
+    const pool = new LiveSessionPool(deps, 0);
+    const pump = new OutboxPump(deps, pool);
+    await pump.kick();
+    await flush();
+    expect(pool.isHeld('bot', 's1')).toBe(true);
+    socket().open();
+    snapshot();
+    await flush();
+    expect(socket().sent.find((f) => f.type === 'message')).toMatchObject({ invocation_id: 'inv-bg', text: 'from the background' });
+
+    socket().emit({ type: 'run_accepted', session_id: 's1', invocation_id: 'inv-bg', run_id: 'r1', turn_id: 't1' });
+    socket().emit({ type: 'runtime_delta', session_id: 's1', epoch: 'e1', seq: 2, delta: { current_run_view: runView('inv-bg', 'running') } });
+    await flush();
+    rest.history.push(
+      { turn_id: 't1', turn_position: 1, role: 'user', text: 'from the background', timestamp: 'x', id: 'm1' },
+      { turn_id: 't1', turn_position: 1, role: 'assistant', messages: [{ id: 0, type: 'text', content: 'ok' }], timestamp: 'x', id: 'm2' },
+    );
+    socket().emit({ type: 'runtime_delta', session_id: 's1', epoch: 'e1', seq: 3, delta: { run: { run_id: 'r1', status: 'completed' } } });
+    await flush();
+    expect((await loadOutboxEntry(db, 'inv-bg'))?.status).toBe('settled');
+    expect(pool.isHeld('bot', 's1')).toBe(false);
+    pump.stop();
+    pool.stopAll();
+  });
   it('connects with the token in a header, subscribes, and waits for a snapshot before sending', async () => {
     const { live, socket, snapshot } = await setup();
     await live.start();

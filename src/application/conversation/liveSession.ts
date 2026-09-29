@@ -55,9 +55,9 @@ const SETTLE_RETRY_MS = 5_000;
  * Everything a chat screen needs for one session: live projection, sending
  * through the durable Outbox, recovery of lost acks, and stop.
  *
- * Limitation (documented in docs/HANDOFF.md): the Outbox of a session is
- * worked only while that session is open; a send queued when the app was
- * killed resumes the next time its conversation is opened.
+ * Instances come from LiveSessionPool, shared by the chat screen and the
+ * OutboxPump, which keeps sessions with unsent messages running while their
+ * screen is closed (for as long as the app process is alive).
  */
 export class LiveSession {
   private stream: SessionStream;
@@ -72,11 +72,15 @@ export class LiveSession {
   private checkpointDirty = false;
   private lastTerminalRun: string | null = null;
   private lastSettleAttempt = Number.NEGATIVE_INFINITY;
+  /** start() has run and stop() has not. */
+  started = false;
+  /** The Outbox of this session has been read at least once. */
+  loaded = false;
 
   constructor(
     private readonly deps: LiveDeps,
-    private readonly botId: string,
-    private readonly sessionId: string,
+    readonly botId: string,
+    readonly sessionId: string,
   ) {
     this.stream = createSessionStream(sessionId);
     this.snapshot = this.buildSnapshot();
@@ -114,13 +118,16 @@ export class LiveSession {
 
   async start() {
     const key = this.key;
-    if (!key) return;
+    if (!key || this.started) return;
+    this.started = true;
     // Show the last known live state at once; it is replaced by the next snapshot.
     const checkpoint = await loadRuntimeCheckpoint(this.deps.db, key);
     if (checkpoint?.run && isRunActive(checkpoint.run.status)) {
       this.stream = { ...awaitSnapshot(this.stream), run: checkpoint.run };
     }
     await this.reloadOutbox();
+    this.loaded = true;
+    if (!this.started) return; // stopped while loading
     this.attachment = this.deps.hub.attach(this.botId, {
       sessionId: this.sessionId,
       onEvent: (event) => void this.onEvent(event),
@@ -133,10 +140,12 @@ export class LiveSession {
   }
 
   stop() {
+    this.started = false;
     if (this.tickTimer) clearInterval(this.tickTimer);
     this.tickTimer = null;
     this.attachment?.detach();
     this.attachment = null;
+    this.stream = awaitSnapshot(this.stream);
     void this.flushCheckpoint();
   }
 

@@ -1,29 +1,17 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
-import { LiveSession, type LiveSnapshot } from '../../application/conversation/liveSession';
+import type { LiveSnapshot } from '../../application/conversation/liveSession';
 import { useAccessState, useServices } from '../../bootstrap/AppServices';
-import { newId } from '../../core/ids';
 import { loadDraft, saveDraft } from '../../data/local/userStateStore';
 
 const IDLE: LiveSnapshot = { run: null, live: false, socket: 'closed', pending: [], failed: [] };
 const noopSubscribe = () => () => undefined;
 
-/** One LiveSession per open chat screen, torn down when it closes. */
+/** The pooled LiveSession of one conversation, held while the screen is mounted. */
 export function useLiveSession(botId: string, sessionId: string) {
-  const services = useServices();
-  const live = useMemo(
-    () =>
-      new LiveSession(
-        { db: services.db, access: services.access, sync: services.sync, hub: services.hub, fetchFn: services.fetchFn, now: Date.now, newId },
-        botId,
-        sessionId,
-      ),
-    [services, botId, sessionId],
-  );
-  useEffect(() => {
-    void live.start();
-    return () => live.stop();
-  }, [live]);
+  const { pool } = useServices();
+  const live = useMemo(() => pool.get(botId, sessionId), [pool, botId, sessionId]);
+  useEffect(() => pool.retain(live), [pool, live]);
   const snapshot = useSyncExternalStore(live?.subscribe ?? noopSubscribe, live ? live.getSnapshot : () => IDLE);
   return { live, snapshot };
 }

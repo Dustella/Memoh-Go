@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 
 import { ConnectionManager, type AccessState } from '../application/access/connectService';
 import { ConversationSync } from '../application/conversation/conversationSync';
+import { LiveSessionPool, OutboxPump } from '../application/conversation/livePool';
 import { RuntimeHub } from '../application/conversation/runtimeHub';
 import { SessionCreator } from '../application/conversation/sessionCreator';
 import { newId } from '../core/ids';
@@ -24,6 +25,7 @@ export type AppServices = Readonly<{
   hub: RuntimeHub;
   fetchFn: FetchFn;
   creator: SessionCreator;
+  pool: LiveSessionPool;
 }>;
 
 const DATABASE_FILE = 'memoh-go.db';
@@ -42,22 +44,32 @@ async function createAppServices(): Promise<AppServices> {
   // Sends interrupted by the last process are unconfirmed, never silently resent.
   await markOutboxColdStart(db, Date.now());
   const hub = new RuntimeHub(access, nativeSocketFactory);
+  const sync = new ConversationSync(db, access, fetchFn, Date.now);
   const creator = new SessionCreator({ db, access, fetchFn, now: Date.now, newId });
+  const pool = new LiveSessionPool({ db, access, sync, hub, fetchFn, now: Date.now, newId });
+  const pump = new OutboxPump({ db, access, sync, hub, fetchFn, now: Date.now, newId }, pool);
   access.subscribe(() => {
     if (access.state.kind !== 'signed_in') {
+      pump.stop();
+      pool.stopAll();
       hub.closeAll();
       creator.stop();
     }
     void creator.resume();
+    void pump.kick();
   });
+  // A created session's first message is queued: send it even if its screen is closed.
+  creator.subscribe(() => void pump.kick());
   AppState.addEventListener('change', (next) => {
     if (next === 'active') {
       hub.wake();
       void creator.resume();
+      void pump.kick();
     }
   });
   void creator.resume();
-  return { db, access, sync: new ConversationSync(db, access, fetchFn, Date.now), hub, fetchFn, creator };
+  void pump.kick();
+  return { db, access, sync, hub, fetchFn, creator, pool };
 }
 
 let servicesPromise: Promise<AppServices> | undefined;
