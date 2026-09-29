@@ -60,6 +60,7 @@ export type SessionSummary = Readonly<{
   title?: string;
   type?: string;
   channel_type?: string;
+  created_by_user_id?: string;
   created_at?: string;
   updated_at?: string;
 }>;
@@ -148,27 +149,40 @@ export class MemohClient {
     token: string,
     botId: string,
     options: { cursor?: string; limit?: number } = {},
-  ): Promise<{ items: SessionSummary[]; nextCursor: string }> {
+  ): Promise<{ items: SessionSummary[]; nextCursor: string; serverDate: string | null }> {
     const query = new URLSearchParams();
     if (options.limit) query.set('limit', String(options.limit));
     if (options.cursor) query.set('cursor', options.cursor);
     const qs = query.toString();
-    const { body } = await this.request<{ items?: SessionSummary[]; next_cursor?: string }>(
+    const { body, serverDate } = await this.request<{ items?: SessionSummary[]; next_cursor?: string }>(
       'GET',
       `/bots/${encodeURIComponent(botId)}/sessions${qs ? `?${qs}` : ''}`,
       { token },
     );
-    return { items: body.items ?? [], nextCursor: body.next_cursor ?? '' };
+    return { items: body.items ?? [], nextCursor: body.next_cursor ?? '', serverDate };
   }
 
-  /** Not idempotent on the server (contracts/u5): callers must reconcile a lost response. */
-  async createSession(token: string, botId: string, body: { title?: string } = {}): Promise<SessionSummary> {
+  /**
+   * Not idempotent on servers without U5 (contracts/u5): callers must
+   * reconcile a lost response. `client_request_id` makes a U5 server return
+   * the existing row; older servers ignore the field.
+   */
+  async createSession(
+    token: string,
+    botId: string,
+    body: { title?: string; client_request_id?: string } = {},
+  ): Promise<SessionSummary> {
     return (
       await this.request<SessionSummary>('POST', `/bots/${encodeURIComponent(botId)}/sessions`, {
         token,
         body: { channel_type: 'local', ...body },
       })
     ).body;
+  }
+
+  /** Whether a session has any persisted turn (one-row history probe). */
+  async hasHistory(token: string, botId: string, sessionId: string): Promise<boolean> {
+    return (await this.listMessages(token, botId, sessionId, { limit: 1 })).length > 0;
   }
 
   /** Persisted turns, old → new; the page starts on a turn boundary. */

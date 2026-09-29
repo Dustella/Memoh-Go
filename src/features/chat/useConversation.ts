@@ -67,7 +67,7 @@ export function useSessions(botId: string) {
     void readCache().then(refresh);
   }, [readCache, refresh]);
 
-  return { sessions, loaded, refreshing, error, hasMore, refresh, loadMore };
+  return { sessions, loaded, refreshing, error, hasMore, refresh, loadMore, reload: readCache };
 }
 
 export type HistoryState = Readonly<{

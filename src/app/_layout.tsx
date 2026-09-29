@@ -32,6 +32,7 @@ export default function RootLayout() {
         <Stack.Screen name="connect" options={{ animation: 'fade' }} />
         <Stack.Screen name="bot/[botId]" options={{ headerShown: true }} />
         <Stack.Screen name="chat/[botId]/[sessionId]" options={{ headerShown: true }} />
+        <Stack.Screen name="chat/[botId]/new" options={{ headerShown: true }} />
       </Stack>
     </AppServicesProvider>
   );

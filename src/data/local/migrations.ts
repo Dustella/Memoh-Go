@@ -139,6 +139,30 @@ export const MIGRATIONS: readonly { version: number; up: string }[] = [
       );
     `,
   },
+  {
+    version: 3,
+    up: `
+      -- "New chat + first message" intents (core/operations/sessionCreate.ts).
+      -- The first message lives here until the server session id is known.
+      CREATE TABLE session_creations (
+        request_id TEXT PRIMARY KEY NOT NULL,
+        scope TEXT NOT NULL,
+        bot_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        first_message TEXT NOT NULL,
+        invocation_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        attempts INTEGER NOT NULL,
+        first_attempt_at INTEGER,
+        next_attempt_at INTEGER NOT NULL,
+        session_id TEXT,
+        last_error TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX session_creations_open ON session_creations (scope, status, created_at);
+    `,
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

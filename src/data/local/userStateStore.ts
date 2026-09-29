@@ -91,6 +91,7 @@ const SCOPED_TABLES = [
   'drafts',
   'reading_anchor',
   'outbox',
+  'session_creations',
 ] as const;
 
 /**

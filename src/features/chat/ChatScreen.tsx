@@ -9,19 +9,17 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import type { LiveSession } from '../../application/conversation/liveSession';
 import { isRunActive } from '../../core/conversation/types';
 import type { OutboxEntry } from '../../core/operations/outbox';
 import { MarkdownBlockView } from '../../ui/markdown/MarkdownBlockView';
 import { fontSize, monoFont, radius, spacing, useTheme } from '../../ui/theme';
+import { Composer } from './components/Composer';
 import { composeRows, type ChatRow, type PendingSend } from './turnRows';
 import { useHistory } from './useConversation';
-import { useDraft, useLiveSession } from './useLiveSession';
+import { useLiveSession } from './useLiveSession';
 
 const TOOL_LABEL = { running: '运行中', done: '已完成', failed: '失败', awaiting: '等待确认' } as const;
 const WORKING_LABEL: Record<string, string> = {
@@ -178,60 +176,6 @@ function toPending(entry: OutboxEntry): PendingSend {
   return { invocationId: entry.invocationId, text: entry.payload.text, turnId: entry.turnId, state };
 }
 
-function Composer({ live, botId, sessionId, running }: { live: LiveSession; botId: string; sessionId: string; running: boolean }) {
-  const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const draft = useDraft(botId, sessionId);
-  const canSend = draft.text.trim().length > 0;
-
-  const send = () => {
-    if (!canSend) return;
-    const text = draft.text;
-    draft.clear();
-    void live.send(text);
-  };
-
-  return (
-    <View
-      style={[
-        styles.composer,
-        { borderTopColor: colors.border, backgroundColor: colors.surface, paddingBottom: Math.max(insets.bottom, spacing.sm) },
-      ]}
-    >
-      <TextInput
-        value={draft.text}
-        onChangeText={draft.update}
-        editable={draft.ready}
-        placeholder="发消息…"
-        placeholderTextColor={colors.textSubtle}
-        multiline
-        accessibilityLabel="消息输入框"
-        style={[styles.input, { color: colors.text, backgroundColor: colors.surfaceMuted }]}
-      />
-      {running && !canSend ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="停止回复"
-          onPress={() => live.abort()}
-          style={[styles.sendButton, { backgroundColor: colors.text }]}
-        >
-          <Ionicons name="stop" size={16} color={colors.background} />
-        </Pressable>
-      ) : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="发送"
-          disabled={!canSend}
-          onPress={send}
-          style={[styles.sendButton, { backgroundColor: canSend ? colors.accent : colors.surfaceMuted }]}
-        >
-          <Ionicons name="arrow-up" size={18} color={canSend ? colors.accentText : colors.textSubtle} />
-        </Pressable>
-      )}
-    </View>
-  );
-}
-
 export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: string }) {
   const { colors } = useTheme();
   const history = useHistory(botId, sessionId);
@@ -298,7 +242,13 @@ export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: str
         />
       )}
 
-      <Composer live={live} botId={botId} sessionId={sessionId} running={running} />
+      <Composer
+        botId={botId}
+        draftKey={sessionId}
+        running={running}
+        onSend={(text) => void live.send(text)}
+        onStop={() => live.abort()}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -342,23 +292,4 @@ const styles = StyleSheet.create({
   },
   toolName: { fontSize: fontSize.small, flexShrink: 1 },
   notice: { fontSize: fontSize.small, lineHeight: 20 },
-  composer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-  },
-  input: {
-    flex: 1,
-    maxHeight: 140,
-    minHeight: 44,
-    borderRadius: 22,
-    paddingHorizontal: spacing.lg,
-    paddingTop: 11,
-    paddingBottom: 11,
-    fontSize: fontSize.body,
-  },
-  sendButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
 });

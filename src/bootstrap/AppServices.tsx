@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 import { ConnectionManager, type AccessState } from '../application/access/connectService';
 import { ConversationSync } from '../application/conversation/conversationSync';
 import { RuntimeHub } from '../application/conversation/runtimeHub';
+import { SessionCreator } from '../application/conversation/sessionCreator';
 import { newId } from '../core/ids';
 import { openExpoDatabase } from '../data/local/expoDatabase';
 import { markOutboxColdStart } from '../data/local/outboxStore';
@@ -22,6 +23,7 @@ export type AppServices = Readonly<{
   sync: ConversationSync;
   hub: RuntimeHub;
   fetchFn: FetchFn;
+  creator: SessionCreator;
 }>;
 
 const DATABASE_FILE = 'memoh-go.db';
@@ -40,13 +42,22 @@ async function createAppServices(): Promise<AppServices> {
   // Sends interrupted by the last process are unconfirmed, never silently resent.
   await markOutboxColdStart(db, Date.now());
   const hub = new RuntimeHub(access, nativeSocketFactory);
+  const creator = new SessionCreator({ db, access, fetchFn, now: Date.now, newId });
   access.subscribe(() => {
-    if (access.state.kind !== 'signed_in') hub.closeAll();
+    if (access.state.kind !== 'signed_in') {
+      hub.closeAll();
+      creator.stop();
+    }
+    void creator.resume();
   });
   AppState.addEventListener('change', (next) => {
-    if (next === 'active') hub.wake();
+    if (next === 'active') {
+      hub.wake();
+      void creator.resume();
+    }
   });
-  return { db, access, sync: new ConversationSync(db, access, fetchFn, Date.now), hub, fetchFn };
+  void creator.resume();
+  return { db, access, sync: new ConversationSync(db, access, fetchFn, Date.now), hub, fetchFn, creator };
 }
 
 let servicesPromise: Promise<AppServices> | undefined;
