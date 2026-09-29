@@ -1,4 +1,5 @@
-import { isRunActive, type Block, type RunView, type ToolApproval, type Turn, type UserInputRequest } from '../../core/conversation/types';
+import { isRunActive, type Block, type RunView, type SteerTurn, type ToolApproval, type Turn, type UserInputRequest } from '../../core/conversation/types';
+import { t } from '../../core/i18n';
 import type { ControlStatus } from '../../core/operations/controls';
 import { splitBlocks } from '../../ui/markdown/blocks';
 
@@ -14,7 +15,7 @@ export type ChatRow =
   | Readonly<{ kind: 'edge'; key: string; turnId: ''; state: 'beginning' | 'loading' | 'more' }>
   | Readonly<{ kind: 'working'; key: string; turnId: string; status: string; stopping: boolean }>
   | Readonly<{ kind: 'pending'; key: string; turnId: ''; invocationId: string; text: string; state: 'sending' | 'unsure' | 'failed' }>
-  | Readonly<{ kind: 'user'; key: string; turnId: string; text: string; attachments: number }>
+  | Readonly<{ kind: 'user'; key: string; turnId: string; text: string; attachments: number; steer?: boolean }>
   | Readonly<{ kind: 'markdown'; key: string; turnId: string; source: string; first: boolean }>
   | Readonly<{ kind: 'reasoning'; key: string; turnId: string; text: string; durationMs?: number; first: boolean }>
   | Readonly<{
@@ -147,7 +148,7 @@ function blockRows(turnId: string, block: Block, first: boolean, ctx: RowContext
         ? [{ kind: 'attachments', key: base, turnId, count: block.attachments.length, first }]
         : [];
     case 'error':
-      return [{ kind: 'notice', key: base, turnId, text: block.content || block.code || '出错了', tone: 'error', first }];
+      return [{ kind: 'notice', key: base, turnId, text: block.content || block.code || t('chat.error'), tone: 'error', first }];
     case 'notice':
       return block.content ? [{ kind: 'notice', key: base, turnId, text: block.content, tone: 'info', first }] : [];
     default:
@@ -174,6 +175,43 @@ export function turnRows(turn: Turn, ctx: RowContext = STATIC): ChatRow[] {
 
 export function historyRows(turns: readonly Turn[]): ChatRow[] {
   return turns.flatMap((t) => turnRows(t));
+}
+
+/**
+ * The live run's assistant rows with steer messages (CH-13) placed where the
+ * run took them: after the block named by `after_message_id` (at the start
+ * for 0 or an unknown block). User turns the run added that are not steers
+ * go after the output. The persisted history later groups the steer before
+ * the whole reply; that is the server's layout, used once it is saved.
+ */
+function liveAssistantRows(run: RunView, primary: Turn | undefined, ctx: RowContext): ChatRow[] {
+  const steers = [...(run.steer_turns ?? [])].sort((a, b) => a.after_message_id - b.after_message_id);
+  const steerRow = (s: SteerTurn): ChatRow => ({
+    kind: 'user',
+    key: `${run.turn_id}:steer:${s.item_id}`,
+    turnId: run.turn_id,
+    text: s.text,
+    attachments: 0,
+    steer: true,
+  });
+  const byBlock = new Map<number, SteerTurn[]>();
+  const blockIds = new Set(run.messages.map((b) => b.id));
+  const leading: SteerTurn[] = [];
+  for (const s of steers) {
+    if (!blockIds.has(s.after_message_id)) leading.push(s);
+    else byBlock.set(s.after_message_id, [...(byBlock.get(s.after_message_id) ?? []), s]);
+  }
+  const rows: ChatRow[] = leading.map(steerRow);
+  for (const block of run.messages) {
+    rows.push(...blockRows(run.turn_id, block, rows.every((r) => r.kind === 'user'), ctx));
+    for (const s of byBlock.get(block.id) ?? []) rows.push(steerRow(s));
+  }
+  const steerTurnIds = new Set(steers.map((s) => s.turn_id).filter(Boolean));
+  for (const turn of run.user_turns ?? []) {
+    if (turn === primary || steerTurnIds.has(turn.turn_id) || !turn.text) continue;
+    rows.push({ kind: 'user', key: `${turn.turn_id}:u`, turnId: turn.turn_id, text: turn.text, attachments: 0, steer: true });
+  }
+  return rows;
 }
 
 export type PendingSend = Readonly<{
@@ -209,12 +247,7 @@ export function composeRows({ history, run, pending, controls, stopping = false 
     const text = userTurn?.text ?? mine?.text;
     const active = isRunActive(liveTurn.status);
     if (text !== undefined) rows.push({ kind: 'user', key: `${liveTurn.turn_id}:u`, turnId: liveTurn.turn_id, text, attachments: 0 });
-    rows.push(
-      ...turnRows(
-        { turn_id: liveTurn.turn_id, role: 'assistant', timestamp: '', messages: liveTurn.messages },
-        { interactive: active && liveTurn.status !== 'aborting' && !stopping, controls },
-      ),
-    );
+    rows.push(...liveAssistantRows(liveTurn, userTurn, { interactive: active && liveTurn.status !== 'aborting' && !stopping, controls }));
     if (active) {
       rows.push({
         kind: 'working',
@@ -223,9 +256,9 @@ export function composeRows({ history, run, pending, controls, stopping = false 
         status: liveTurn.status,
         stopping: stopping || liveTurn.status === 'aborting',
       });
-    } else if (liveTurn.status === 'aborted') rows.push({ kind: 'notice', key: `${liveTurn.turn_id}:x`, turnId: liveTurn.turn_id, text: '已停止', tone: 'info', first: false });
+    } else if (liveTurn.status === 'aborted') rows.push({ kind: 'notice', key: `${liveTurn.turn_id}:x`, turnId: liveTurn.turn_id, text: t('chat.stopped'), tone: 'info', first: false });
     else if (liveTurn.status === 'errored' || liveTurn.status === 'lost') {
-      rows.push({ kind: 'notice', key: `${liveTurn.turn_id}:x`, turnId: liveTurn.turn_id, text: liveTurn.error || '这一轮没有完成', tone: 'error', first: false });
+      rows.push({ kind: 'notice', key: `${liveTurn.turn_id}:x`, turnId: liveTurn.turn_id, text: liveTurn.error || t('chat.notCompleted'), tone: 'error', first: false });
     }
   }
 
@@ -248,7 +281,7 @@ export function copyChoices(rows: readonly ChatRow[], row: ChatRow): CopyChoice[
   switch (row.kind) {
     case 'user':
     case 'pending':
-      return row.text ? [{ label: '复制', text: row.text }] : [];
+      return row.text ? [{ label: t('common.copy'), text: row.text }] : [];
     case 'markdown': {
       const reply = rows
         .filter((r): r is Extract<ChatRow, { kind: 'markdown' }> => r.kind === 'markdown' && r.turnId === row.turnId)
@@ -257,16 +290,16 @@ export function copyChoices(rows: readonly ChatRow[], row: ChatRow): CopyChoice[
         .join('\n\n');
       const block = row.source.trim();
       return reply === block
-        ? [{ label: '复制回复', text: reply }]
+        ? [{ label: t('chat.copy.reply'), text: reply }]
         : [
-            { label: '复制整条回复', text: reply },
-            { label: '复制本段', text: block },
+            { label: t('chat.copy.wholeReply'), text: reply },
+            { label: t('chat.copy.paragraph'), text: block },
           ];
     }
     case 'reasoning':
-      return row.text ? [{ label: '复制思考过程', text: row.text }] : [];
+      return row.text ? [{ label: t('chat.copy.thinking'), text: row.text }] : [];
     case 'tool':
-      return [row.output ? { label: '复制工具输出', text: row.output } : null, row.input ? { label: '复制工具输入', text: row.input } : null].filter(
+      return [row.output ? { label: t('chat.copy.toolOutput'), text: row.output } : null, row.input ? { label: t('chat.copy.toolInput'), text: row.input } : null].filter(
         (c): c is CopyChoice => c !== null,
       );
     default:

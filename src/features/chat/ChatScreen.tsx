@@ -11,14 +11,19 @@ import {
 } from 'react-native';
 
 import { isRunActive } from '../../core/conversation/types';
+import { t, tn, type MessageKey } from '../../core/i18n';
 import type { OutboxEntry } from '../../core/operations/outbox';
 import { MarkdownBlockView } from '../../ui/markdown/MarkdownBlockView';
 import { KeyboardAware } from '../../ui/components/KeyboardAware';
+import { useLocale, useT } from '../../ui/preferences';
 import { fontSize, radius, spacing, useTheme } from '../../ui/theme';
 import { chatStatus, type StatusAction } from './chatStatus';
 import { Composer } from './components/Composer';
 import { MessageMenu } from './components/MessageMenu';
+import { QueueBar } from './components/QueueBar';
 import { StatusStrip } from './components/StatusStrip';
+import type { QueueMode } from '../../application/conversation/sessionQueue';
+import { useSessionQueue } from './useSessionQueue';
 import { QuestionCard, ToolRow, type DecisionActions } from './components/DecisionCards';
 import { composeRows, copyChoices, type ChatRow, type ControlView, type CopyChoice, type PendingSend } from './turnRows';
 import { useHistory } from './useConversation';
@@ -28,18 +33,18 @@ import { useMarkSeen, useReadingAnchor, useRememberChat } from './usePagePersist
 /** Within this distance of the end the reader counts as "at the newest message". */
 const AT_BOTTOM_SLACK_PX = 80;
 
-const WORKING_LABEL: Record<string, string> = {
-  admitting: '准备中',
-  running: '正在回复',
-  waiting_decision: '等待你的确认',
-  aborting: '正在停止',
-  finishing: '收尾中',
+const WORKING_LABEL: Record<string, MessageKey> = {
+  admitting: 'phase.admitting',
+  running: 'phase.running',
+  waiting_decision: 'chat.waitingYourDecision',
+  aborting: 'phase.aborting',
+  finishing: 'phase.finishing',
 };
 
 function Reasoning({ text, durationMs, onLongPress }: { text: string; durationMs?: number; onLongPress: () => void }) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
-  const label = durationMs ? `思考了 ${Math.max(1, Math.round(durationMs / 1000))} 秒` : '思考过程';
+  const label = durationMs ? t('chat.thoughtFor', { seconds: Math.max(1, Math.round(durationMs / 1000)) }) : t('chat.thinking');
   return (
     <Pressable
       accessibilityRole="button"
@@ -76,7 +81,7 @@ function Working({ status }: { status: string }) {
   return (
     <View style={[styles.assistant, styles.chipRow]} accessibilityLiveRegion="polite">
       <Animated.View style={[styles.dot, { backgroundColor: colors.accent, opacity: pulse }]} />
-      <Text style={[styles.chipText, { color: colors.textMuted }]}>{WORKING_LABEL[status] ?? '处理中'}</Text>
+      <Text style={[styles.chipText, { color: colors.textMuted }]}>{t(WORKING_LABEL[status] ?? 'chat.working')}</Text>
     </View>
   );
 }
@@ -94,11 +99,12 @@ const LONG_PRESS_MS = 350;
 
 const Row = memo(function Row({ row, actions }: { row: ChatRow; actions: RowActions }) {
   const { colors } = useTheme();
+  useT();
   const top = 'first' in row && row.first ? styles.turnStart : null;
   switch (row.kind) {
     case 'edge':
       return row.state === 'beginning' ? (
-        <Text style={[styles.beginning, { color: colors.textSubtle }]}>会话开始</Text>
+        <Text style={[styles.beginning, { color: colors.textSubtle }]}>{t('chat.beginning')}</Text>
       ) : (
         <View style={styles.headerRow}>
           {row.state === 'loading' ? <ActivityIndicator color={colors.textMuted} /> : null}
@@ -110,14 +116,20 @@ const Row = memo(function Row({ row, actions }: { row: ChatRow; actions: RowActi
           <Pressable
             delayLongPress={LONG_PRESS_MS}
             onLongPress={() => actions.menu(row)}
-            accessibilityHint="长按可复制"
+            accessibilityHint={t('chat.longPressToCopy')}
             style={[styles.userBubble, { backgroundColor: colors.userBubble }]}
           >
             <Text style={[styles.userText, { color: colors.userBubbleText }]}>{row.text}</Text>
             {row.attachments > 0 ? (
-              <Text style={[styles.userMeta, { color: colors.textMuted }]}>附件 {row.attachments} 个</Text>
+              <Text style={[styles.userMeta, { color: colors.textMuted }]}>{tn('chat.attachments', row.attachments)}</Text>
             ) : null}
           </Pressable>
+          {row.steer ? (
+            <View style={styles.pendingMeta}>
+              <Ionicons name="git-merge-outline" size={12} color={colors.textSubtle} />
+              <Text style={[styles.metaText, { color: colors.textSubtle }]}>{t('queue.steerApplied')}</Text>
+            </View>
+          ) : null}
         </View>
       );
     case 'pending': {
@@ -133,19 +145,19 @@ const Row = memo(function Row({ row, actions }: { row: ChatRow; actions: RowActi
           </Pressable>
           <View style={styles.pendingMeta}>
             {row.state === 'sending' ? (
-              <Text style={[styles.metaText, { color: tone }]}>发送中…</Text>
+              <Text style={[styles.metaText, { color: tone }]}>{t('chat.sending')}</Text>
             ) : (
               <>
-                <Text style={[styles.metaText, { color: tone }]}>{row.state === 'failed' ? '发送失败' : '可能未送达'}</Text>
+                <Text style={[styles.metaText, { color: tone }]}>{row.state === 'failed' ? t('chat.sendFailed') : t('chat.sendUnsure')}</Text>
                 <Pressable
                   accessibilityRole="button"
                   hitSlop={8}
                   onPress={() => (row.state === 'failed' ? actions.retry : actions.resend)(row.invocationId)}
                 >
-                  <Text style={[styles.metaAction, { color: colors.accent }]}>重发</Text>
+                  <Text style={[styles.metaAction, { color: colors.accent }]}>{t('chat.resend')}</Text>
                 </Pressable>
                 <Pressable accessibilityRole="button" hitSlop={8} onPress={() => actions.discard(row.invocationId)}>
-                  <Text style={[styles.metaAction, { color: colors.textMuted }]}>{row.state === 'failed' ? '删除' : '放弃'}</Text>
+                  <Text style={[styles.metaAction, { color: colors.textMuted }]}>{row.state === 'failed' ? t('common.delete') : t('common.discard')}</Text>
                 </Pressable>
               </>
             )}
@@ -184,7 +196,7 @@ const Row = memo(function Row({ row, actions }: { row: ChatRow; actions: RowActi
         <View style={[styles.assistant, top]}>
           <View style={styles.chipRow}>
             <Ionicons name="attach" size={14} color={colors.textMuted} />
-            <Text style={[styles.chipText, { color: colors.textMuted }]}>附件 {row.count} 个</Text>
+            <Text style={[styles.chipText, { color: colors.textMuted }]}>{tn('chat.attachments', row.count)}</Text>
           </View>
         </View>
       );
@@ -204,12 +216,16 @@ function toPending(entry: OutboxEntry): PendingSend {
 
 export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: string; sessionId: string; focusLatest?: boolean }) {
   const { colors } = useTheme();
+  const locale = useLocale();
   const history = useHistory(botId, sessionId);
   const { live, snapshot } = useLiveSession(botId, sessionId);
   const running = Boolean(snapshot.run && isRunActive(snapshot.run.status));
   const stopping =
     snapshot.run?.status === 'aborting' ||
     snapshot.controls.some((c) => c.kind === 'abort' && c.runId === snapshot.run?.run_id && (c.status === 'sending' || c.status === 'sent' || c.status === 'applied'));
+  const runKey = `${snapshot.run?.run_id ?? ''}:${snapshot.run?.status ?? ''}:${snapshot.run?.steer_turns?.length ?? 0}:${snapshot.run?.user_turns?.length ?? 0}`;
+  const { queue, view: queueView } = useSessionQueue(botId, sessionId, runKey);
+  const [queueMode, setQueueMode] = useState<QueueMode>('follow_up');
 
   const rows = useMemo(() => {
     const pending = [...snapshot.pending, ...snapshot.failed].map(toPending);
@@ -219,7 +235,8 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
     if (body.length === 0) return body;
     const state = !history.checkpoint?.hasOlder ? 'beginning' : history.loadingOlder ? 'loading' : 'more';
     return [{ kind: 'edge', key: 'edge', turnId: '', state } as const, ...body];
-  }, [history.turns, history.checkpoint?.hasOlder, history.loadingOlder, snapshot, stopping]);
+    // Row text (notices, copy labels) is re-read when the language changes.
+  }, [history.turns, history.checkpoint?.hasOlder, history.loadingOlder, snapshot, stopping, locale]);
 
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
@@ -283,7 +300,7 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
         failed: snapshot.failed,
         controls: snapshot.controls,
       }),
-    [snapshot, history.loaded, history.error],
+    [snapshot, history.loaded, history.error, locale],
   );
   const refreshHistory = history.refresh;
   const onStatusAction = useCallback((action: StatusAction) => {
@@ -296,7 +313,7 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
 
       {history.loaded && rows.length === 0 && !history.syncing ? (
         <View style={styles.center}>
-          <Text style={[styles.emptyText, { color: colors.textMuted }]}>还没有消息，说点什么吧。</Text>
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>{t('chat.empty')}</Text>
         </View>
       ) : !history.loaded || anchor === undefined || (rows.length === 0 && history.syncing) ? (
         <View style={styles.center}>
@@ -324,14 +341,34 @@ export function ChatScreen({ botId, sessionId, focusLatest = false }: { botId: s
         />
       )}
 
+      <QueueBar
+        view={queueView}
+        running={running}
+        mode={queueMode}
+        onMode={setQueueMode}
+        onCancel={(item) => void queue.cancel(item)}
+        onPromote={(item) => void queue.promote(item)}
+        onDismissNotice={() => queue.dismissNotice()}
+      />
       <Composer
         botId={botId}
         draftKey={sessionId}
         running={running}
+        busy={queueView.busy}
         onSend={(text) => {
+          const toEnd = () => requestAnimationFrame(() => void listRef.current?.scrollToEnd({ animated: true }));
+          // While the Bot replies, a new message goes through the server queue (CH-13) when it has one.
+          if (running && queueView.support !== 'no') {
+            return queue.submit(queueMode, text).then((outcome) => {
+              if (outcome.kind === 'returned') return 'restore' as const;
+              if (outcome.kind === 'send_now') void live.send(text);
+              toEnd();
+              return 'sent' as const;
+            });
+          }
           void live.send(text);
           // Sending means "take me to the newest message", even when reading older history.
-          requestAnimationFrame(() => void listRef.current?.scrollToEnd({ animated: true }));
+          toEnd();
         }}
         onStop={() => live.abort()}
       />

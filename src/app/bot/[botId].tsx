@@ -7,6 +7,7 @@ import { useAccessState, useServices } from '../../bootstrap/AppServices';
 import { RequireSignIn } from '../../bootstrap/RequireSignIn';
 import { loadBots } from '../../data/local/conversationStore';
 import { BotSessionsScreen } from '../../features/chat/BotSessionsScreen';
+import { useT } from '../../ui/preferences';
 import { useTheme } from '../../ui/theme';
 
 export default function BotRoute() {
@@ -14,13 +15,14 @@ export default function BotRoute() {
   const { db } = useServices();
   const { colors } = useTheme();
   const state = useAccessState();
-  const [title, setTitle] = useState('会话');
+  const { t } = useT();
+  const [title, setTitle] = useState('');
 
   useEffect(() => {
     if (state.kind !== 'signed_in') return;
     void loadBots(db, state.session.scope).then((bots) => {
       const bot = bots.find((b) => b.id === botId);
-      if (bot) setTitle(bot.display_name || bot.name || '会话');
+      if (bot) setTitle(bot.display_name || bot.name || '');
     });
   }, [db, state, botId]);
 
@@ -29,11 +31,11 @@ export default function BotRoute() {
       <Stack.Screen
         options={{
           headerShown: true,
-          title,
+          title: title || t('common.session'),
           headerRight: () => (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="新建会话"
+              accessibilityLabel={t('botSessions.newChat')}
               hitSlop={12}
               onPress={() => router.push({ pathname: '/chat/[botId]/new', params: { botId } })}
             >

@@ -50,7 +50,7 @@ export async function upsertConnection(db: SqlExecutor, connection: Connection):
        server_version, server_commit, created_at, last_used_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (deployment, account_id) DO UPDATE SET
-       team_id = excluded.team_id, username = excluded.username, display_name = excluded.display_name,
+       username = excluded.username, display_name = excluded.display_name,
        server_version = excluded.server_version, server_commit = excluded.server_commit,
        last_used_at = excluded.last_used_at`,
     [
@@ -88,4 +88,13 @@ export async function touchConnection(db: SqlExecutor, connectionId: string, now
 
 export async function deleteConnection(db: SqlExecutor, connectionId: string) {
   await db.run('DELETE FROM connections WHERE connection_id = ?', [connectionId]);
+}
+
+
+/** Select another Team for this connection (ID-05); its scope and cache change with it. */
+export async function setConnectionTeam(db: SqlExecutor, connectionId: string, teamId: string, now: number): Promise<Connection> {
+  await db.run('UPDATE connections SET team_id = ?, last_used_at = ? WHERE connection_id = ?', [teamId, now, connectionId]);
+  const row = await db.first<Row>('SELECT * FROM connections WHERE connection_id = ?', [connectionId]);
+  if (!row) throw new Error(`Unknown connection ${connectionId}`);
+  return toConnection(row);
 }

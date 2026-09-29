@@ -127,3 +127,23 @@ export async function clearScope(db: SqlDatabase, scope: ScopeKey) {
     for (const table of SCOPED_TABLES) await tx.run(`DELETE FROM ${table} WHERE scope = ?`, [scope]);
   });
 }
+
+/** Server data that can always be fetched again (AD-10 "clear cache"). */
+const CACHE_TABLES = ['bots', 'sessions', 'turns', 'history_checkpoint', 'runtime_checkpoint'] as const;
+
+export async function cacheSummary(db: SqlExecutor, scope: ScopeKey): Promise<{ sessions: number; turns: number }> {
+  const sessions = await db.first<{ n: number }>('SELECT COUNT(*) AS n FROM sessions WHERE scope = ?', [scope]);
+  const turns = await db.first<{ n: number }>('SELECT COUNT(*) AS n FROM turns WHERE scope = ?', [scope]);
+  return { sessions: sessions?.n ?? 0, turns: turns?.n ?? 0 };
+}
+
+/**
+ * Drop re-fetchable server data for one scope. Drafts, reading anchors, the
+ * outbox, pending session creations and "last seen" marks are local-only and
+ * are kept; an anchor whose row is gone restores to the newest message.
+ */
+export async function clearSessionCache(db: SqlDatabase, scope: ScopeKey) {
+  await db.transaction(async (tx) => {
+    for (const table of CACHE_TABLES) await tx.run(`DELETE FROM ${table} WHERE scope = ?`, [scope]);
+  });
+}

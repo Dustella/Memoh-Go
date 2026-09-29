@@ -1,18 +1,21 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useAccessState, useServices } from '../../bootstrap/AppServices';
+import { OSS_DEFAULT_TEAM_ID } from '../../core/identity/credential';
+import { MOCK_TEAM_ID } from '../../core/identity/teams';
+import { useT } from '../../ui/preferences';
 import { fontSize, radius, spacing, useTheme } from '../../ui/theme';
 
-function formatDateTime(ms: number) {
+export function formatDateTime(ms: number) {
   const d = new Date(ms);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+export function InfoRow({ label, value }: { label: string; value: string }) {
   const { colors } = useTheme();
   return (
     <View style={[styles.row, { borderTopColor: colors.border }]}>
@@ -22,8 +25,31 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+export function LinkRow({ icon, label, value, href }: { icon: keyof typeof Ionicons.glyphMap; label: string; value?: string; href: Href }) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={() => router.push(href)}
+      style={({ pressed }) => [styles.link, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}
+    >
+      <Ionicons name={icon} size={18} color={colors.textMuted} />
+      <Text style={[styles.linkText, { color: colors.text }]}>{label}</Text>
+      {value ? <Text numberOfLines={1} style={[styles.linkValue, { color: colors.textMuted }]}>{value}</Text> : null}
+      <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
+    </Pressable>
+  );
+}
+
+export function teamName(teamId: string, t: ReturnType<typeof useT>['t']) {
+  if (teamId === OSS_DEFAULT_TEAM_ID) return t('management.teamDefault');
+  if (teamId === MOCK_TEAM_ID) return 'Research (mock)';
+  return teamId;
+}
+
 export function ManagementScreen() {
   const { colors } = useTheme();
+  const { t } = useT();
   const { access } = useServices();
   const state = useAccessState();
   const [signingOut, setSigningOut] = useState(false);
@@ -31,10 +57,10 @@ export function ManagementScreen() {
   const { connection, credential } = state.session;
 
   const confirmSignOut = () =>
-    Alert.alert('退出登录？', '将删除本机保存的登录凭据、会话缓存、草稿和未发送的消息。服务端上的数据不受影响。', [
-      { text: '取消', style: 'cancel' },
+    Alert.alert(t('management.signOutTitle'), t('management.signOutBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '退出',
+        text: t('management.signOutConfirm'),
         style: 'destructive',
         onPress: () => {
           setSigningOut(true);
@@ -45,7 +71,7 @@ export function ManagementScreen() {
 
   return (
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content}>
-      <Text style={[styles.section, { color: colors.textMuted }]}>账号</Text>
+      <Text style={[styles.section, { color: colors.textMuted }]}>{t('management.account')}</Text>
       <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.identity}>
           <View style={[styles.avatar, { backgroundColor: colors.accentSoft }]}>
@@ -56,20 +82,16 @@ export function ManagementScreen() {
             <Text style={[styles.sub, { color: colors.textMuted }]}>@{connection.username}</Text>
           </View>
         </View>
-        <Row label="服务地址" value={connection.deployment} />
-        <Row label="服务端版本" value={connection.serverVersion || '未知'} />
-        <Row label="登录有效至" value={formatDateTime(credential.expiresAt)} />
+        <InfoRow label={t('management.server')} value={connection.deployment} />
+        <InfoRow label={t('management.serverVersion')} value={connection.serverVersion || t('common.unknown')} />
+        <InfoRow label={t('management.expires')} value={formatDateTime(credential.expiresAt)} />
       </View>
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push('/diagnostics-log')}
-        style={({ pressed }) => [styles.link, { backgroundColor: colors.surface, borderColor: colors.border }, pressed && styles.pressed]}
-      >
-        <Ionicons name="pulse-outline" size={18} color={colors.textMuted} />
-        <Text style={[styles.linkText, { color: colors.text }]}>诊断信息</Text>
-        <Ionicons name="chevron-forward" size={16} color={colors.textSubtle} />
-      </Pressable>
+      <LinkRow icon="people-outline" label={t('management.team')} value={teamName(connection.teamId, t)} href="/team" />
+      <View style={styles.gap} />
+      <LinkRow icon="options-outline" label={t('nav.settings')} href="/settings" />
+      <View style={styles.gap} />
+      <LinkRow icon="pulse-outline" label={t('nav.diagnostics')} href="/diagnostics-log" />
 
       <Pressable
         accessibilityRole="button"
@@ -82,15 +104,15 @@ export function ManagementScreen() {
         ]}
       >
         <Ionicons name="log-out-outline" size={18} color={colors.danger} />
-        <Text style={[styles.signOutText, { color: colors.danger }]}>退出登录</Text>
+        <Text style={[styles.signOutText, { color: colors.danger }]}>{t('management.signOut')}</Text>
       </Pressable>
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
+export const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { padding: spacing.lg },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
   section: {
     fontSize: fontSize.small,
     fontWeight: '600',
@@ -113,6 +135,7 @@ const styles = StyleSheet.create({
   },
   rowLabel: { fontSize: fontSize.body },
   rowValue: { fontSize: fontSize.body, flexShrink: 1, textAlign: 'right' },
+  gap: { height: spacing.sm },
   signOut: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -128,11 +151,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginTop: spacing.xl,
+    marginTop: spacing.sm,
     padding: spacing.md,
     borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
   },
   linkText: { flex: 1, fontSize: fontSize.body },
+  linkValue: { fontSize: fontSize.small, flexShrink: 1, maxWidth: '55%' },
   pressed: { opacity: 0.6 },
 });

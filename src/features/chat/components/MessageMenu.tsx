@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, ToastAndroid, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useT } from '../../../ui/preferences';
 import { fontSize, radius, spacing, useTheme } from '../../../ui/theme';
 import type { CopyChoice } from '../turnRows';
 
@@ -15,6 +16,7 @@ import type { CopyChoice } from '../turnRows';
 export function MessageMenu({ choices, onClose }: { choices: readonly CopyChoice[] | null; onClose: () => void }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const { t } = useT();
   const [selecting, setSelecting] = useState<string | null>(null);
   useEffect(() => {
     if (!choices) setSelecting(null);
@@ -23,7 +25,7 @@ export function MessageMenu({ choices, onClose }: { choices: readonly CopyChoice
   const copy = async (choice: CopyChoice) => {
     await Clipboard.setStringAsync(choice.text);
     // Android 13+ shows its own clipboard confirmation; older versions and iOS get none.
-    if (Platform.OS === 'android' && Number(Platform.Version) < 33) ToastAndroid.show('已复制', ToastAndroid.SHORT);
+    if (Platform.OS === 'android' && Number(Platform.Version) < 33) ToastAndroid.show(t('common.copied'), ToastAndroid.SHORT);
     onClose();
   };
 
@@ -33,9 +35,9 @@ export function MessageMenu({ choices, onClose }: { choices: readonly CopyChoice
       {selecting !== null ? (
         <View style={[styles.selectRoot, { backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
           <View style={[styles.selectBar, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.selectTitle, { color: colors.text }]}>选择文本</Text>
+            <Text style={[styles.selectTitle, { color: colors.text }]}>{t('chat.menu.selectText')}</Text>
             <Pressable accessibilityRole="button" hitSlop={12} onPress={onClose}>
-              <Text style={[styles.done, { color: colors.accent }]}>完成</Text>
+              <Text style={[styles.done, { color: colors.accent }]}>{t('common.done')}</Text>
             </Pressable>
           </View>
           <ScrollView contentContainerStyle={styles.selectBody}>
@@ -45,7 +47,7 @@ export function MessageMenu({ choices, onClose }: { choices: readonly CopyChoice
           </ScrollView>
         </View>
       ) : (
-        <Pressable style={[styles.backdrop, { backgroundColor: 'rgba(0,0,0,0.32)' }]} onPress={onClose} accessibilityLabel="关闭菜单">
+        <Pressable style={[styles.backdrop, { backgroundColor: 'rgba(0,0,0,0.32)' }]} onPress={onClose} accessibilityLabel={t('chat.menu.close')}>
           <Pressable
             style={[styles.sheet, { backgroundColor: colors.surface, paddingBottom: insets.bottom + spacing.sm }]}
             onPress={() => undefined}
@@ -66,7 +68,7 @@ export function MessageMenu({ choices, onClose }: { choices: readonly CopyChoice
                 onPress={() => setSelecting(choices[0]!.text)}
                 style={({ pressed }) => [styles.item, pressed && { backgroundColor: colors.surfaceMuted }]}
               >
-                <Text style={[styles.itemText, { color: colors.text }]}>选择文本</Text>
+                <Text style={[styles.itemText, { color: colors.text }]}>{t('chat.menu.selectText')}</Text>
               </Pressable>
             ) : null}
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -75,7 +77,7 @@ export function MessageMenu({ choices, onClose }: { choices: readonly CopyChoice
               onPress={onClose}
               style={({ pressed }) => [styles.item, pressed && { backgroundColor: colors.surfaceMuted }]}
             >
-              <Text style={[styles.itemText, { color: colors.textMuted }]}>取消</Text>
+              <Text style={[styles.itemText, { color: colors.textMuted }]}>{t('common.cancel')}</Text>
             </Pressable>
           </Pressable>
         </Pressable>

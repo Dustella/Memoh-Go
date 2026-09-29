@@ -13,6 +13,8 @@ export class ApiError extends Error {
     readonly kind: ApiErrorKind,
     message: string,
     readonly status = 0,
+    /** Machine-readable problem code (`code` in Memoh's problem+json bodies), when present. */
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -75,9 +77,9 @@ export class MemohClient {
   ) {}
 
   private async request<T>(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
     path: string,
-    options: { token?: string; body?: unknown } = {},
+    options: { token?: string; body?: unknown; allowEmpty?: boolean } = {},
   ): Promise<Timed<T>> {
     const headers: Record<string, string> = { accept: 'application/json' };
     if (options.token) headers.authorization = `Bearer ${options.token}`;
@@ -111,12 +113,13 @@ export class MemohClient {
       }
     }
     if (response.status < 200 || response.status >= 300) {
+      // Legacy errors are `{message}`; newer handlers answer problem+json `{detail, code}`.
+      const problem = parsed && typeof parsed === 'object' ? (parsed as { message?: unknown; detail?: unknown; code?: unknown }) : {};
       const message =
-        parsed && typeof parsed === 'object' && typeof (parsed as { message?: unknown }).message === 'string'
-          ? (parsed as { message: string }).message
-          : `HTTP ${response.status}`;
-      throw new ApiError('http', message, response.status);
+        typeof problem.message === 'string' ? problem.message : typeof problem.detail === 'string' ? problem.detail : `HTTP ${response.status}`;
+      throw new ApiError('http', message, response.status, typeof problem.code === 'string' ? problem.code : undefined);
     }
+    if (options.allowEmpty && text.length === 0) return { body: {} as T, serverDate: response.headers.get('date') };
     if (parsed === undefined || parsed === null || typeof parsed !== 'object') {
       throw new ApiError('malformed', 'The server returned an unexpected response', response.status);
     }
@@ -202,4 +205,85 @@ export class MemohClient {
     );
     return body.items ?? [];
   }
+
+  // ------------------------------------------------------------ follow-up / steer queue (CH-13)
+
+  private queuePath(botId: string, sessionId: string, rest: string) {
+    return `/bots/${encodeURIComponent(botId)}/sessions/${encodeURIComponent(sessionId)}/${rest}`;
+  }
+
+  /** Pending steer and follow-up items plus whether the active run accepts steering. */
+  async getQueue(token: string, botId: string, sessionId: string): Promise<SessionQueue> {
+    const { body } = await this.request<Partial<SessionQueue>>('GET', this.queuePath(botId, sessionId, 'queue'), { token });
+    return { steer_supported: body.steer_supported === true, steer: body.steer ?? [], follow_up: body.follow_up ?? [] };
+  }
+
+  /** Idempotent by `invocation_id`: a replay with the same text returns the same item. */
+  async enqueue(token: string, botId: string, sessionId: string, kind: QueueKind, body: { invocation_id: string; text: string }): Promise<QueueItem> {
+    const rest = kind === 'steer' ? 'steer-queue' : 'follow-up-queue';
+    return (await this.request<QueueItem>('POST', this.queuePath(botId, sessionId, rest), { token, body })).body;
+  }
+
+  async cancelQueueItem(token: string, botId: string, sessionId: string, kind: QueueKind, itemId: string): Promise<void> {
+    const rest = `${kind === 'steer' ? 'steer-queue' : 'follow-up-queue'}/${encodeURIComponent(itemId)}`;
+    await this.request('DELETE', this.queuePath(botId, sessionId, rest), { token, allowEmpty: true });
+  }
+
+  async promoteFollowUp(token: string, botId: string, sessionId: string, itemId: string): Promise<QueueItem> {
+    const rest = `follow-up-queue/${encodeURIComponent(itemId)}/steer`;
+    return (await this.request<QueueItem>('POST', this.queuePath(botId, sessionId, rest), { token, allowEmpty: true })).body;
+  }
+
+  // ------------------------------------------------------------ Bot detail (AD-01)
+
+  async getBot(token: string, botId: string): Promise<BotDetail> {
+    return (await this.request<BotDetail>('GET', `/bots/${encodeURIComponent(botId)}`, { token })).body;
+  }
+
+  async listBotChecks(token: string, botId: string): Promise<BotCheck[]> {
+    const { body } = await this.request<{ items?: BotCheck[] }>('GET', `/bots/${encodeURIComponent(botId)}/checks`, { token });
+    return body.items ?? [];
+  }
+
+  async memoryUsage(token: string, botId: string): Promise<{ count: number }> {
+    const { body } = await this.request<{ count?: number }>('GET', `/bots/${encodeURIComponent(botId)}/memory/usage`, { token });
+    return { count: body.count ?? 0 };
+  }
+
+  async countSchedules(token: string, botId: string): Promise<number> {
+    const { body } = await this.request<{ items?: unknown[] }>('GET', `/bots/${encodeURIComponent(botId)}/schedule`, { token });
+    return body.items?.length ?? 0;
+  }
+
+  async countWorkdirs(token: string, botId: string): Promise<number> {
+    const { body } = await this.request<{ workdirs?: unknown[] }>('GET', `/bots/${encodeURIComponent(botId)}/workdirs`, { token });
+    return body.workdirs?.length ?? 0;
+  }
 }
+
+export type QueueKind = 'steer' | 'follow_up';
+/** accepted = pending; claimed/applied = taken by the run; the rest are terminal. */
+export type QueueStatus = 'accepted' | 'claimed' | 'applied' | 'rejected' | 'expired' | 'canceled';
+export type QueueItem = Readonly<{
+  item_id: string;
+  status: QueueStatus;
+  position: number;
+  text: string;
+  target_run_id?: string;
+  enqueued_during_run_id?: string;
+}>;
+export type SessionQueue = Readonly<{ steer_supported: boolean; steer: QueueItem[]; follow_up: QueueItem[] }>;
+
+/** GET /bots/:id (verified on the dev stack, 2026-09-29). */
+export type BotDetail = BotSummary &
+  Readonly<{
+    owner_user_id?: string;
+    avatar_url?: string;
+    timezone?: string;
+    check_state?: string;
+    check_issue_count?: number;
+    current_user_permissions?: string[];
+    created_at?: string;
+    updated_at?: string;
+  }>;
+export type BotCheck = Readonly<{ id: string; type?: string; title_key?: string; status: string; summary?: string }>;

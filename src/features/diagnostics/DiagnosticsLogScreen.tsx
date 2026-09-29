@@ -7,15 +7,17 @@ import { FlatList, Platform, Pressable, StyleSheet, Text, ToastAndroid, View } f
 import { useAccessState, useServices } from '../../bootstrap/AppServices';
 import { formatEntry, type LogEntry, type LogLevel } from '../../core/diagnostics/log';
 import { buildDiagnosticsReport } from '../../core/diagnostics/report';
+import { t, type MessageKey } from '../../core/i18n';
 import type { OutboxEntry } from '../../core/operations/outbox';
 import { loadPendingOutbox } from '../../data/local/outboxStore';
+import { useT } from '../../ui/preferences';
 import { fontSize, monoFont, radius, spacing, useTheme, type Palette } from '../../ui/theme';
 
 function levelColor(colors: Palette, level: LogLevel) {
   return level === 'error' ? colors.danger : level === 'warn' ? colors.warning : level === 'info' ? colors.text : colors.textSubtle;
 }
 
-const KNOWN_LABEL = { yes: '：支持', no: '：不支持', unknown: '：尚未确认' } as const;
+const KNOWN_LABEL = { yes: 'diag.supported', no: 'diag.unsupported', unknown: 'diag.unknown' } as const satisfies Record<string, MessageKey>;
 
 /** On screen: local wall-clock time; the copied report keeps UTC ISO timestamps. */
 function screenLine(entry: LogEntry) {
@@ -32,6 +34,7 @@ function screenLine(entry: LogEntry) {
  */
 export function DiagnosticsLogScreen() {
   const { colors } = useTheme();
+  useT();
   const { log, db } = useServices();
   const state = useAccessState();
   const entries = useSyncExternalStore(log.subscribe, log.entries);
@@ -72,7 +75,7 @@ export function DiagnosticsLogScreen() {
 
   const copy = async () => {
     await Clipboard.setStringAsync(report());
-    if (Platform.OS === 'android' && Number(Platform.Version) < 33) ToastAndroid.show('已复制诊断信息', ToastAndroid.SHORT);
+    if (Platform.OS === 'android' && Number(Platform.Version) < 33) ToastAndroid.show(t('diag.copied'), ToastAndroid.SHORT);
   };
 
   const visible = useMemo(
@@ -82,7 +85,7 @@ export function DiagnosticsLogScreen() {
   const summary = useMemo(() => {
     const byStatus = new Map<string, number>();
     for (const e of outbox) byStatus.set(e.status, (byStatus.get(e.status) ?? 0) + 1);
-    return [...byStatus].map(([s, n]) => `${s} ${n}`).join(' · ') || '无';
+    return [...byStatus].map(([s, n]) => `${s} ${n}`).join(' · ') || t('diag.none');
   }, [outbox]);
 
   const renderItem = useCallback(
@@ -97,19 +100,24 @@ export function DiagnosticsLogScreen() {
     <View style={[styles.flex, { backgroundColor: colors.background }]}>
       <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={[styles.meta, { color: colors.textMuted }]}>
-          应用 {Constants.expoConfig?.version ?? '?'} · {__DEV__ ? '开发版' : '正式版'} · {Platform.OS} {String(Platform.Version)}
+          {t('diag.app', {
+            version: Constants.expoConfig?.version ?? '?',
+            build: __DEV__ ? t('settings.build.dev') : t('settings.build.release'),
+            os: Platform.OS,
+            osVersion: String(Platform.Version),
+          })}
         </Text>
         {capabilities ? (
           <Text style={[styles.meta, { color: colors.textMuted }]}>
-            发送结果查询{KNOWN_LABEL[capabilities.invocationLookup]} · 重复发送去重{KNOWN_LABEL[capabilities.admissionDedup]}
+            {t('diag.caps', { lookup: t(KNOWN_LABEL[capabilities.invocationLookup]), dedup: t(KNOWN_LABEL[capabilities.admissionDedup]) })}
           </Text>
         ) : null}
-        <Text style={[styles.meta, { color: colors.textMuted }]}>待发送队列：{summary}</Text>
-        <Text style={[styles.note, { color: colors.textSubtle }]}>日志只记录状态与编号，不含登录凭据和消息内容；重启应用后清空。</Text>
+        <Text style={[styles.meta, { color: colors.textMuted }]}>{t('diag.queue', { summary })}</Text>
+        <Text style={[styles.note, { color: colors.textSubtle }]}>{t('diag.note')}</Text>
         <View style={styles.actions}>
           <Pressable accessibilityRole="button" onPress={() => void copy()} style={[styles.button, { backgroundColor: colors.accent }]}>
             <Ionicons name="copy-outline" size={16} color={colors.accentText} />
-            <Text style={[styles.buttonText, { color: colors.accentText }]}>复制诊断信息</Text>
+            <Text style={[styles.buttonText, { color: colors.accentText }]}>{t('diag.copy')}</Text>
           </Pressable>
           <Pressable
             accessibilityRole="switch"
@@ -117,10 +125,10 @@ export function DiagnosticsLogScreen() {
             onPress={() => setShowDebug((v) => !v)}
             style={[styles.button, { backgroundColor: colors.surfaceMuted }]}
           >
-            <Text style={[styles.buttonText, { color: colors.text }]}>{showDebug ? '隐藏调试事件' : '显示调试事件'}</Text>
+            <Text style={[styles.buttonText, { color: colors.text }]}>{showDebug ? t('diag.hideDebug') : t('diag.showDebug')}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" onPress={log.clear} hitSlop={8} style={styles.clear}>
-            <Text style={[styles.buttonText, { color: colors.textMuted }]}>清空</Text>
+            <Text style={[styles.buttonText, { color: colors.textMuted }]}>{t('diag.clear')}</Text>
           </Pressable>
         </View>
       </View>
@@ -129,7 +137,7 @@ export function DiagnosticsLogScreen() {
         keyExtractor={(item, index) => `${item.at}:${index}`}
         renderItem={renderItem}
         contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text style={[styles.empty, { color: colors.textMuted }]}>暂无事件</Text>}
+        ListEmptyComponent={<Text style={[styles.empty, { color: colors.textMuted }]}>{t('diag.empty')}</Text>}
       />
     </View>
   );

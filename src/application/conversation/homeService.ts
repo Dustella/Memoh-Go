@@ -1,5 +1,6 @@
 import type { Logger } from '../../core/diagnostics/log';
 import { isRunActive } from '../../core/conversation/types';
+import { tn } from '../../core/i18n';
 import {
   buildHome,
   homeKey,
@@ -88,15 +89,44 @@ export class HomeService {
 
   getSnapshot = () => this.snapshot;
 
+  private holders = 0;
+
+  /**
+   * Keep Home live until the returned release is called. Held by the home
+   * screen while focused and, for in-app alerts (NT-01), by the app while it
+   * is in the foreground. The watch cap applies either way.
+   */
+  retain(): () => void {
+    this.holders += 1;
+    if (this.holders === 1) void this.activate();
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.holders -= 1;
+      if (this.holders === 0) this.deactivate();
+    };
+  }
+
+  /** Signed-in scope changed (sign-out, Team switch): drop watches and read the new scope. */
+  restart() {
+    this.unwatchAll();
+    this.loaded = false;
+    this.error = null;
+    this.publish();
+    if (!this.active) return;
+    void this.reloadLocal().then(() => this.refresh());
+  }
+
   /** Home is on screen: read the cache, watch sessions, refresh from the server. */
-  async activate() {
+  private async activate() {
     if (this.active) return;
     this.active = true;
     await this.reloadLocal();
     void this.refresh();
   }
 
-  deactivate() {
+  private deactivate() {
     this.active = false;
     if (this.reloadTimer) clearTimeout(this.reloadTimer);
     this.reloadTimer = null;
@@ -114,7 +144,7 @@ export class HomeService {
       const bots = (await loadBots(this.deps.db, state.session.scope)).slice(0, MAX_BOTS_REFRESHED);
       const results = await Promise.allSettled(bots.map((b) => this.deps.sync.syncSessions(b.id)));
       const failed = results.filter((r) => r.status === 'rejected');
-      this.error = failed.length > 0 ? `${failed.length} 个 Bot 的会话未能刷新` : null;
+      this.error = failed.length > 0 ? tn('home.botsFailed', failed.length) : null;
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e);
       this.deps.log?.warn('home.refresh_failed', { error: e });

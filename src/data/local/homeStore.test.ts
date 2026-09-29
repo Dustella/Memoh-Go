@@ -30,7 +30,7 @@ describe('homeStore', () => {
     await upsertSessions(db, other, 'b1', [{ id: 'x', bot_id: 'b1', updated_at: '2026-09-29T03:00:00Z' }], 0);
 
     expect(await loadHomeSessions(db, scope)).toEqual([
-      { botId: 'b2', botName: 'Other', sessionId: 's2', title: '未命名会话', updatedAt: '2026-09-29T02:00:00Z' },
+      { botId: 'b2', botName: 'Other', sessionId: 's2', title: '', updatedAt: '2026-09-29T02:00:00Z' },
       { botId: 'b1', botName: 'Kitty', sessionId: 's1', title: 'one', updatedAt: '2026-09-29T01:00:00Z' },
     ]);
   });

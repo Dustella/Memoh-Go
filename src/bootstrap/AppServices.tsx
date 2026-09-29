@@ -11,11 +11,13 @@ import { createLogger, type Logger } from '../core/diagnostics/log';
 import { newId } from '../core/ids';
 import { openExpoDatabase } from '../data/local/expoDatabase';
 import { markOutboxColdStart } from '../data/local/outboxStore';
+import { loadPreferences, savePreference } from '../data/local/preferencesStore';
 import type { SqlDatabase } from '../data/local/sql';
 import type { FetchFn } from '../data/remote/memohClient';
 import { installPlatformCrypto } from '../platform/installPlatformCrypto';
 import { nativeSocketFactory } from '../platform/nativeSocketFactory';
 import { secureCredentialVault } from '../platform/secureCredentialVault';
+import { appPreferences } from '../ui/preferences';
 
 installPlatformCrypto();
 
@@ -48,6 +50,12 @@ const DATABASE_FILE = 'memoh-go.db';
 async function createAppServices(): Promise<AppServices> {
   const log = appLog;
   const db = await openExpoDatabase(DATABASE_FILE);
+  const saved = await loadPreferences(db);
+  appPreferences.hydrate(saved, (next, key) => {
+    void savePreference(db, key, next[key], Date.now()).catch((error: unknown) =>
+      log.warn('preferences.save_failed', { key, error }),
+    );
+  });
   const fetchFn = fetch as unknown as FetchFn;
   const access = new ConnectionManager({
     db,
@@ -67,6 +75,15 @@ async function createAppServices(): Promise<AppServices> {
   const pump = new OutboxPump({ db, access, sync, hub, fetchFn, now: Date.now, newId, log }, pool);
   const home = new HomeService({ db, access, sync, pool, now: Date.now, log });
   let lastAccess = access.state.kind;
+  let lastScope = access.state.kind === 'signed_in' ? access.state.session.scope : null;
+  const stopBackground = () => {
+    pump.stop();
+    pool.stopAll();
+    hub.closeAll();
+    creator.stop();
+    // Home drops its watches and re-reads for the new state (empty when signed out).
+    home.restart();
+  };
   access.subscribe(() => {
     if (access.state.kind !== lastAccess) {
       log.info('access.state', {
@@ -76,13 +93,15 @@ async function createAppServices(): Promise<AppServices> {
       });
       lastAccess = access.state.kind;
     }
+    const scope = access.state.kind === 'signed_in' ? access.state.session.scope : null;
     if (access.state.kind !== 'signed_in') {
-      home.deactivate();
-      pump.stop();
-      pool.stopAll();
-      hub.closeAll();
-      creator.stop();
+      stopBackground();
+    } else if (lastScope !== null && scope !== lastScope) {
+      // Team switch (ID-05): nothing from the previous scope may keep running or sending.
+      log.info('access.scope_changed');
+      stopBackground();
     }
+    lastScope = scope;
     void creator.resume();
     void pump.kick();
   });

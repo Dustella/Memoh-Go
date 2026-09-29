@@ -3,7 +3,9 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { UserInputQuestion, UserInputRequest } from '../../../core/conversation/types';
+import { getLocale, t, type MessageKey } from '../../../core/i18n';
 import { controlFailureText, type AnswerInput } from '../../../core/operations/controls';
+import { useT } from '../../../ui/preferences';
 import { fontSize, monoFont, radius, spacing, useTheme } from '../../../ui/theme';
 import type { ChatRow, ControlView } from '../turnRows';
 
@@ -12,8 +14,8 @@ export type DecisionActions = Readonly<{
   answer: (userInputId: string, response: { answers: readonly AnswerInput[] } | { canceled: true }) => void;
 }>;
 
-const TOOL_LABEL = { running: '运行中', done: '已完成', failed: '失败', awaiting: '等待确认' } as const;
-const APPROVAL_LABEL: Record<string, string> = { approved: '已批准', rejected: '已拒绝', expired: '已过期', cancelled: '已取消' };
+const TOOL_LABEL = { running: 'tool.running', done: 'tool.done', failed: 'tool.failed', awaiting: 'tool.awaiting' } as const satisfies Record<string, MessageKey>;
+const APPROVAL_LABEL: Record<string, MessageKey> = { approved: 'approval.approved', rejected: 'approval.rejected', expired: 'approval.expired', cancelled: 'approval.cancelled' };
 
 const inFlight = (c?: ControlView) => c?.status === 'sending' || c?.status === 'sent';
 
@@ -24,7 +26,7 @@ function ControlLine({ control, pendingText }: { control?: ControlView; pendingT
     return (
       <View style={styles.inline}>
         <ActivityIndicator size="small" color={colors.textMuted} />
-        <Text style={[styles.small, { color: colors.textMuted }]}>{control.status === 'sending' ? '等待连接后提交…' : '提交中…'}</Text>
+        <Text style={[styles.small, { color: colors.textMuted }]}>{control.status === 'sending' ? t('approval.waitingConnection') : t('approval.submitting')}</Text>
       </View>
     );
   }
@@ -58,6 +60,7 @@ function Button({ label, tone, disabled, onPress }: { label: string; tone: 'prim
 /** A tool call: tap to show input/output; an approval card below when one is attached. */
 export function ToolRow({ row, actions }: { row: Extract<ChatRow, { kind: 'tool' }>; actions: DecisionActions }) {
   const { colors } = useTheme();
+  useT();
   const [open, setOpen] = useState(false);
   const tone = row.state === 'failed' ? colors.danger : row.state === 'awaiting' ? colors.warning : colors.textMuted;
   const hasDetail = Boolean(row.input || row.output);
@@ -68,7 +71,7 @@ export function ToolRow({ row, actions }: { row: Extract<ChatRow, { kind: 'tool'
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open, disabled: !hasDetail }}
-        accessibilityLabel={`工具 ${row.name}，${TOOL_LABEL[row.state]}`}
+        accessibilityLabel={t('tool.a11y', { name: row.name, state: t(TOOL_LABEL[row.state]) })}
         disabled={!hasDetail}
         onPress={() => setOpen((v) => !v)}
         style={[styles.tool, { backgroundColor: colors.surfaceMuted }]}
@@ -82,7 +85,7 @@ export function ToolRow({ row, actions }: { row: Extract<ChatRow, { kind: 'tool'
           {row.name}
           {row.summary ? <Text style={{ color: colors.textMuted }}>{`  ${row.summary}`}</Text> : null}
         </Text>
-        <Text style={[styles.small, { color: tone }]}>{TOOL_LABEL[row.state]}</Text>
+        <Text style={[styles.small, { color: tone }]}>{t(TOOL_LABEL[row.state])}</Text>
         {hasDetail ? <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textSubtle} /> : null}
       </Pressable>
 
@@ -90,13 +93,13 @@ export function ToolRow({ row, actions }: { row: Extract<ChatRow, { kind: 'tool'
         <View style={[styles.detail, { borderColor: colors.border }]}>
           {row.input ? (
             <>
-              <Text style={[styles.detailLabel, { color: colors.textSubtle }]}>输入</Text>
+              <Text style={[styles.detailLabel, { color: colors.textSubtle }]}>{t('tool.input')}</Text>
               <Text selectable style={[styles.code, { color: colors.text, fontFamily: monoFont }]}>{row.input}</Text>
             </>
           ) : null}
           {row.output ? (
             <>
-              <Text style={[styles.detailLabel, { color: colors.textSubtle }]}>输出</Text>
+              <Text style={[styles.detailLabel, { color: colors.textSubtle }]}>{t('tool.output')}</Text>
               <Text selectable style={[styles.code, { color: colors.text, fontFamily: monoFont }]}>{row.output}</Text>
             </>
           ) : null}
@@ -108,7 +111,7 @@ export function ToolRow({ row, actions }: { row: Extract<ChatRow, { kind: 'tool'
           <View style={[styles.card, { borderColor: colors.warning, backgroundColor: colors.surface }]}>
             <View style={styles.inline}>
               <Ionicons name="shield-checkmark-outline" size={16} color={colors.warning} />
-              <Text style={[styles.cardTitle, { color: colors.text }]}>需要你的批准</Text>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>{t('approval.title')}</Text>
             </View>
             {row.summary ? (
               <Text selectable style={[styles.code, { color: colors.text, fontFamily: monoFont }]} numberOfLines={6}>
@@ -116,9 +119,9 @@ export function ToolRow({ row, actions }: { row: Extract<ChatRow, { kind: 'tool'
               </Text>
             ) : null}
             {!row.interactive ? (
-              <Text style={[styles.small, { color: colors.textMuted }]}>等待批准</Text>
+              <Text style={[styles.small, { color: colors.textMuted }]}>{t('approval.waiting')}</Text>
             ) : approval.can_approve === false ? (
-              <Text style={[styles.small, { color: colors.textMuted }]}>你没有批准权限，等待有权限的成员处理</Text>
+              <Text style={[styles.small, { color: colors.textMuted }]}>{t('approval.noPermission')}</Text>
             ) : (
               <>
                 <View style={styles.buttons}>
@@ -137,19 +140,19 @@ export function ToolRow({ row, actions }: { row: Extract<ChatRow, { kind: 'tool'
                     })
                   ) : (
                     <>
-                      <Button label="拒绝" tone="plain" disabled={inFlight(row.control)} onPress={() => actions.approve(approval.approval_id, 'reject')} />
-                      <Button label="批准" tone="primary" disabled={inFlight(row.control)} onPress={() => actions.approve(approval.approval_id, 'approve')} />
+                      <Button label={t('approval.reject')} tone="plain" disabled={inFlight(row.control)} onPress={() => actions.approve(approval.approval_id, 'reject')} />
+                      <Button label={t('approval.approve')} tone="primary" disabled={inFlight(row.control)} onPress={() => actions.approve(approval.approval_id, 'approve')} />
                     </>
                   )}
                 </View>
-                <ControlLine control={row.control} pendingText="已提交，等待执行…" />
+                <ControlLine control={row.control} pendingText={t('approval.pending')} />
               </>
             )}
           </View>
         ) : (
           <Text style={[styles.small, styles.resolved, { color: colors.textMuted }]}>
-            {APPROVAL_LABEL[approval.status] ?? approval.status}
-            {approval.decision_reason ? `：${approval.decision_reason}` : ''}
+            {APPROVAL_LABEL[approval.status] ? t(APPROVAL_LABEL[approval.status]!) : approval.status}
+            {approval.decision_reason ? `: ${approval.decision_reason}` : ''}
           </Text>
         )
       ) : null}
@@ -176,17 +179,18 @@ function answerSummary(request: UserInputRequest): string {
   if (!request.answers?.length) return '';
   return request.answers
     .map((a) => {
-      if (a.skipped) return '（跳过）';
+      if (a.skipped) return t('question.skipped');
       const parts = [...(a.selected ?? []).map((s) => s.label), a.custom_text, a.text].filter(Boolean);
-      return parts.join('、');
+      return parts.join(getLocale() === 'zh' ? '、' : ', ');
     })
     .filter(Boolean)
-    .join('；');
+    .join(getLocale() === 'zh' ? '；' : '; ');
 }
 
 /** An ask_user question from the agent. Mount with key = user_input_id so answers never leak between rows. */
 export function QuestionCard({ row, actions }: { row: Extract<ChatRow, { kind: 'question' }>; actions: DecisionActions }) {
   const { colors } = useTheme();
+  useT();
   const { request } = row;
   const questions = request.questions ?? [];
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -195,7 +199,7 @@ export function QuestionCard({ row, actions }: { row: Extract<ChatRow, { kind: '
 
   if (request.status !== 'pending') {
     const summary = answerSummary(request);
-    const label = request.status === 'submitted' ? `已回答${summary ? `：${summary}` : ''}` : request.status === 'canceled' ? '已跳过' : request.status === 'expired' ? '已过期' : request.status;
+    const label = request.status === 'submitted' ? (summary ? t('question.answeredWith', { summary }) : t('question.answered')) : request.status === 'canceled' ? t('question.skippedStatus') : request.status === 'expired' ? t('question.expired') : request.status;
     return (
       <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
         {questions.map((q) => (
@@ -214,7 +218,7 @@ export function QuestionCard({ row, actions }: { row: Extract<ChatRow, { kind: '
     <View style={[styles.card, { borderColor: colors.accent, backgroundColor: colors.surface }]}>
       <View style={styles.inline}>
         <Ionicons name="help-circle-outline" size={16} color={colors.accent} />
-        <Text style={[styles.cardTitle, { color: colors.text }]}>需要你回答</Text>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>{t('question.title')}</Text>
       </View>
       {questions.map((q) => {
         const d = draftOf(q.id);
@@ -226,7 +230,7 @@ export function QuestionCard({ row, actions }: { row: Extract<ChatRow, { kind: '
                 value={d.text}
                 onChangeText={(text) => update(q.id, { text })}
                 editable={canAnswer && !busy}
-                placeholder={q.placeholder || '输入回答'}
+                placeholder={q.placeholder || t('question.placeholder')}
                 placeholderTextColor={colors.textSubtle}
                 multiline
                 style={[styles.input, { color: colors.text, backgroundColor: colors.surfaceMuted }]}
@@ -271,7 +275,7 @@ export function QuestionCard({ row, actions }: { row: Extract<ChatRow, { kind: '
                     value={d.custom}
                     onChangeText={(custom) => update(q.id, { custom })}
                     editable={canAnswer && !busy}
-                    placeholder="其他答案"
+                    placeholder={t('question.other')}
                     placeholderTextColor={colors.textSubtle}
                     style={[styles.input, { color: colors.text, backgroundColor: colors.surfaceMuted }]}
                   />
@@ -284,18 +288,18 @@ export function QuestionCard({ row, actions }: { row: Extract<ChatRow, { kind: '
       {canAnswer ? (
         <>
           <View style={styles.buttons}>
-            <Button label="跳过" tone="plain" disabled={busy} onPress={() => actions.answer(request.user_input_id, { canceled: true })} />
+            <Button label={t('common.skip')} tone="plain" disabled={busy} onPress={() => actions.answer(request.user_input_id, { canceled: true })} />
             <Button
-              label="提交"
+              label={t('common.submit')}
               tone="primary"
               disabled={busy || !ready}
               onPress={() => actions.answer(request.user_input_id, { answers: questions.map((q) => toAnswer(q, draftOf(q.id))) })}
             />
           </View>
-          <ControlLine control={row.control} pendingText="已提交，等待继续…" />
+          <ControlLine control={row.control} pendingText={t('question.pending')} />
         </>
       ) : (
-        <Text style={[styles.small, { color: colors.textMuted }]}>{row.interactive ? '你不能回答这个问题' : '等待回答'}</Text>
+        <Text style={[styles.small, { color: colors.textMuted }]}>{row.interactive ? t('question.cannotAnswer') : t('question.waiting')}</Text>
       )}
     </View>
   );

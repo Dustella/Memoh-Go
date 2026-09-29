@@ -5,7 +5,9 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { KeyboardAware } from '../../ui/components/KeyboardAware';
 
 import { useServices } from '../../bootstrap/AppServices';
+import { t } from '../../core/i18n';
 import type { SessionCreation } from '../../core/operations/sessionCreate';
+import { useT } from '../../ui/preferences';
 import { fontSize, radius, spacing, useTheme } from '../../ui/theme';
 import { Composer } from './components/Composer';
 
@@ -21,11 +23,11 @@ function statusText(c: SessionCreation) {
   switch (c.status) {
     case 'pending':
     case 'creating':
-      return '正在创建会话…';
+      return t('newChat.creating');
     case 'unknown':
-      return '网络不稳定，正在确认会话是否已创建…';
+      return t('newChat.confirming');
     case 'failed':
-      return `创建失败：${c.lastError ?? '未知错误'}`;
+      return t('newChat.failed', { error: c.lastError ?? t('common.unknown') });
     default:
       return '';
   }
@@ -38,6 +40,7 @@ function statusText(c: SessionCreation) {
  */
 export function NewChatScreen({ botId, requestId: initialRequest }: { botId: string; requestId?: string }) {
   const { colors } = useTheme();
+  useT();
   const { creator } = useServices();
   const creations = useCreations();
   const [requestId, setRequestId] = useState(initialRequest);
@@ -71,14 +74,14 @@ export function NewChatScreen({ botId, requestId: initialRequest }: { botId: str
                 <>
                   <Text style={[styles.metaText, { color: colors.danger }]} numberOfLines={2}>{statusText(creation)}</Text>
                   <Pressable accessibilityRole="button" hitSlop={8} onPress={() => void creator.retry(creation.requestId)}>
-                    <Text style={[styles.metaAction, { color: colors.accent }]}>重试</Text>
+                    <Text style={[styles.metaAction, { color: colors.accent }]}>{t('common.retry')}</Text>
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
                     hitSlop={8}
                     onPress={() => void creator.discard(creation.requestId).then(() => router.back())}
                   >
-                    <Text style={[styles.metaAction, { color: colors.textMuted }]}>删除</Text>
+                    <Text style={[styles.metaAction, { color: colors.textMuted }]}>{t('common.delete')}</Text>
                   </Pressable>
                 </>
               ) : (
@@ -95,8 +98,8 @@ export function NewChatScreen({ botId, requestId: initialRequest }: { botId: str
       ) : (
         <View style={[styles.flex, styles.center]}>
           <Ionicons name="sparkles-outline" size={28} color={colors.textSubtle} />
-          <Text style={[styles.hint, { color: colors.textMuted }]}>新的会话</Text>
-          <Text style={[styles.subHint, { color: colors.textSubtle }]}>第一条消息会作为会话标题</Text>
+          <Text style={[styles.hint, { color: colors.textMuted }]}>{t('newChat.title')}</Text>
+          <Text style={[styles.subHint, { color: colors.textSubtle }]}>{t('newChat.hint')}</Text>
           {error ? <Text style={[styles.subHint, { color: colors.danger }]}>{error}</Text> : null}
         </View>
       )}

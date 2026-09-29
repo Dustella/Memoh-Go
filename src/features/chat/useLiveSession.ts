@@ -69,5 +69,23 @@ export function useDraft(botId: string, sessionId: string) {
     persist('');
   };
 
-  return { text, ready, update, clear };
+  /** Empty the input but keep the saved draft until `commit` or `restore`. */
+  const hold = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    latest.current = '';
+    setText('');
+  };
+
+  /** The held text was taken: forget it (unless something new was typed). */
+  const commit = () => {
+    if (latest.current === '') persist('');
+  };
+
+  /** The held text was not taken: put it back (unless something new was typed). */
+  const restore = (value: string) => {
+    if (latest.current === '') update(value);
+  };
+
+  return { text, ready, update, clear, hold, commit, restore };
 }

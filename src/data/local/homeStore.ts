@@ -16,7 +16,8 @@ export async function loadHomeSessions(db: SqlExecutor, scope: ScopeKey, limit =
     botId: r.bot_id,
     botName: r.bot_name || r.bot_id,
     sessionId: r.session_id,
-    title: r.title || '未命名会话',
+    // Empty when the server has no title; the UI shows its own placeholder.
+    title: r.title ?? '',
     updatedAt: r.server_updated_at ?? '',
   }));
 }

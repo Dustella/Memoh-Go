@@ -2,12 +2,14 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Redirect, Tabs, useSegments } from 'expo-router';
 
 import { useAccessState } from '../../bootstrap/AppServices';
+import { useT } from '../../ui/preferences';
 
 /** Hidden developer routes work without an account (e.g. the benchmark driver). */
 const UNGATED = new Set(['bench', 'db-selftest', 'diagnostics', 'storage-diagnostics']);
 
 export default function MainTabsLayout() {
   const access = useAccessState();
+  const { t } = useT();
   const segments = useSegments() as string[];
   const ungated = UNGATED.has(segments[segments.length - 1] ?? '');
   if (!ungated && (access.kind === 'signed_out' || access.kind === 'needs_sign_in')) return <Redirect href="/connect" />;
@@ -17,7 +19,7 @@ export default function MainTabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: '首页',
+          title: t('tabs.home'),
           tabBarIcon: ({ color, focused, size }) => (
             <Ionicons color={color} name={focused ? 'home' : 'home-outline'} size={size} />
           ),
@@ -26,7 +28,7 @@ export default function MainTabsLayout() {
       <Tabs.Screen
         name="sessions"
         options={{
-          title: '会话',
+          title: t('tabs.sessions'),
           tabBarIcon: ({ color, focused, size }) => (
             <Ionicons
               color={color}
@@ -39,7 +41,7 @@ export default function MainTabsLayout() {
       <Tabs.Screen
         name="resources"
         options={{
-          title: '资源',
+          title: t('tabs.resources'),
           tabBarIcon: ({ color, focused, size }) => (
             <Ionicons color={color} name={focused ? 'folder-open' : 'folder-open-outline'} size={size} />
           ),
@@ -48,7 +50,7 @@ export default function MainTabsLayout() {
       <Tabs.Screen
         name="management"
         options={{
-          title: '管理',
+          title: t('tabs.management'),
           tabBarIcon: ({ color, focused, size }) => (
             <Ionicons color={color} name={focused ? 'settings' : 'settings-outline'} size={size} />
           ),

@@ -1,5 +1,7 @@
 import { ScrollView, StyleSheet, Text, useColorScheme, View } from 'react-native';
 
+import { useT } from '../preferences';
+
 type PlaceholderScreenProps = Readonly<{
   title: string;
   description: string;
@@ -8,6 +10,7 @@ type PlaceholderScreenProps = Readonly<{
 /** Shared static screen placeholder; it does not simulate business state. */
 export function PlaceholderScreen({ title, description }: PlaceholderScreenProps) {
   const isDark = useColorScheme() === 'dark';
+  const { t } = useT();
   const colors = isDark
     ? { background: '#151718', foreground: '#F2F4F5', muted: '#B0B8BE' }
     : { background: '#F8FAFC', foreground: '#18212B', muted: '#536171' };
@@ -22,7 +25,7 @@ export function PlaceholderScreen({ title, description }: PlaceholderScreenProps
           {title}
         </Text>
         <Text style={[styles.description, { color: colors.muted }]}>{description}</Text>
-        <Text style={[styles.status, { color: colors.muted }]}>页面准备中</Text>
+        <Text style={[styles.status, { color: colors.muted }]}>{t('placeholder.preparing')}</Text>
       </View>
     </ScrollView>
   );

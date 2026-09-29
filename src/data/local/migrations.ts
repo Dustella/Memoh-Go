@@ -194,6 +194,18 @@ export const MIGRATIONS: readonly { version: number; up: string }[] = [
       );
     `,
   },
+  {
+    version: 6,
+    up: `
+      -- Device-wide app settings (language, appearance, alerts; AD-10).
+      -- Not scoped: they survive sign-out and apply before sign-in.
+      CREATE TABLE app_preferences (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `,
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

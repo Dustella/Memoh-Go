@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { t, type MessageKey } from '../../../core/i18n';
 import { fontSize, spacing, useTheme, type Palette } from '../../../ui/theme';
 import type { StatusAction, StatusLine } from '../chatStatus';
 
@@ -10,7 +11,7 @@ const ICON: Record<StatusLine['kind'], keyof typeof Ionicons.glyphMap> = {
   operations: 'paper-plane-outline',
 };
 
-const ACTION_LABEL: Record<StatusAction, string> = { retry_sync: '重试' };
+const ACTION_LABEL: Record<StatusAction, MessageKey> = { retry_sync: 'common.retry' };
 
 function toneColor(colors: Palette, tone: StatusLine['tone']) {
   return tone === 'error' ? colors.danger : tone === 'warning' ? colors.warning : colors.textMuted;
@@ -33,7 +34,7 @@ export function StatusStrip({ lines, onAction }: { lines: readonly StatusLine[];
             </Text>
             {line.action ? (
               <Pressable accessibilityRole="button" hitSlop={8} onPress={() => onAction(line.action!)}>
-                <Text style={[styles.action, { color: colors.accent }]}>{ACTION_LABEL[line.action]}</Text>
+                <Text style={[styles.action, { color: colors.accent }]}>{t(ACTION_LABEL[line.action])}</Text>
               </Pressable>
             ) : null}
           </View>

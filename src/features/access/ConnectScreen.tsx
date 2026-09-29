@@ -15,7 +15,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { probeServer, type ServerProbe } from '../../application/access/connectService';
 import { useAccessState, useServices } from '../../bootstrap/AppServices';
 import type { FetchFn } from '../../data/remote/memohClient';
+import { t } from '../../core/i18n';
 import { KeyboardAware } from '../../ui/components/KeyboardAware';
+import { useT } from '../../ui/preferences';
 import { fontSize, radius, spacing, useTheme } from '../../ui/theme';
 
 type OkProbe = Extract<ServerProbe, { kind: 'ok' }>;
@@ -23,18 +25,19 @@ type OkProbe = Extract<ServerProbe, { kind: 'ok' }>;
 function probeMessage(probe: Exclude<ServerProbe, OkProbe>): string {
   switch (probe.kind) {
     case 'invalid_url':
-      return '地址格式不正确。示例：memoh.example.com 或 http://192.168.1.10:18080';
+      return t('connect.invalidUrl');
     case 'unreachable':
-      return '无法连接到这个地址。请检查网络、端口，以及是否需要 http://。';
+      return t('connect.unreachable');
     case 'not_memoh':
-      return '这个地址有响应，但不是 Memoh 服务。';
+      return t('connect.notMemoh');
     case 'too_old':
-      return `服务端版本 ${probe.version} 过旧。Memoh 移动端需要 v${probe.minimum} 或更新版本，请先升级服务端。`;
+      return t('connect.tooOld', { version: probe.version, minimum: probe.minimum });
   }
 }
 
 export function ConnectScreen() {
   const { colors } = useTheme();
+  useT();
   const { access } = useServices();
   const state = useAccessState();
   const reauth = state.kind === 'needs_sign_in' ? state : null;
@@ -66,9 +69,9 @@ export function ConnectScreen() {
     setError(null);
     const result = await access.signIn(probe, username, password);
     setBusy(null);
-    if (result.kind === 'invalid_credentials') setError('用户名或密码不正确。');
-    else if (result.kind === 'wrong_account') setError(`请使用 ${reauth?.connection.username} 登录，或先退出这个账号。`);
-    else if (result.kind === 'error') setError(`登录失败：${result.message}`);
+    if (result.kind === 'invalid_credentials') setError(t('connect.badCredentials'));
+    else if (result.kind === 'wrong_account') setError(t('connect.wrongAccount', { username: reauth?.connection.username ?? '' }));
+    else if (result.kind === 'error') setError(t('connect.signInFailed', { message: result.message }));
     else {
       setPassword('');
       void access.syncBots().catch(() => undefined);
@@ -99,19 +102,19 @@ export function ConnectScreen() {
             <Ionicons name="sparkles" size={28} color={colors.accent} />
           </View>
           <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>
-            {reauth ? '重新登录' : '连接 Memoh'}
+            {reauth ? t('connect.titleReauth') : t('connect.title')}
           </Text>
           <Text style={[styles.subtitle, { color: colors.textMuted }]}>
             {reauth
-              ? '登录已失效。重新登录后，本机保存的会话、草稿和未发送消息都会保留。'
-              : '输入你的 Memoh 服务地址，用该服务的账号登录。'}
+              ? t('connect.subtitleReauth')
+              : t('connect.subtitle')}
           </Text>
 
-          <Text style={[styles.label, { color: colors.textMuted }]}>服务地址</Text>
+          <Text style={[styles.label, { color: colors.textMuted }]}>{t('connect.server')}</Text>
           {probe ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="修改服务地址"
+              accessibilityLabel={t('connect.editServer')}
               onPress={editServer}
               disabled={busy !== null || reauth !== null}
               style={[styles.serverCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -125,11 +128,11 @@ export function ConnectScreen() {
                     color={probe.verified ? colors.success : colors.warning}
                   />
                   <Text style={[styles.badge, { color: probe.verified ? colors.success : colors.warning }]}>
-                    {probe.verified ? `Memoh ${probe.ping.version}` : `未验证的版本 ${probe.ping.version || '（未知）'}`}
+                    {probe.verified ? `Memoh ${probe.ping.version}` : t('connect.unverifiedVersion', { version: probe.ping.version || t('connect.unknownVersion') })}
                   </Text>
                 </View>
               </View>
-              {reauth ? null : <Text style={[styles.link, { color: colors.accent }]}>修改</Text>}
+              {reauth ? null : <Text style={[styles.link, { color: colors.accent }]}>{t('connect.edit')}</Text>}
             </Pressable>
           ) : (
             field({
@@ -139,30 +142,30 @@ export function ConnectScreen() {
               keyboardType: 'url',
               returnKeyType: 'next',
               onSubmitEditing: () => void checkServer(),
-              accessibilityLabel: '服务地址',
+              accessibilityLabel: t('connect.server'),
               textContentType: 'URL',
             })
           )}
 
           {probe ? (
             <>
-              <Text style={[styles.label, { color: colors.textMuted }]}>用户名</Text>
+              <Text style={[styles.label, { color: colors.textMuted }]}>{t('connect.username')}</Text>
               {field({
                 value: username,
                 onChangeText: setUsername,
-                placeholder: '用户名',
+                placeholder: t('connect.username'),
                 textContentType: 'username',
                 autoComplete: 'username',
                 returnKeyType: 'next',
                 onSubmitEditing: () => passwordRef.current?.focus(),
-                accessibilityLabel: '用户名',
+                accessibilityLabel: t('connect.username'),
               })}
-              <Text style={[styles.label, { color: colors.textMuted }]}>密码</Text>
+              <Text style={[styles.label, { color: colors.textMuted }]}>{t('connect.password')}</Text>
               <TextInput
                 ref={passwordRef}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="密码"
+                placeholder={t('connect.password')}
                 placeholderTextColor={colors.textSubtle}
                 secureTextEntry
                 textContentType="password"
@@ -170,7 +173,7 @@ export function ConnectScreen() {
                 returnKeyType="go"
                 onSubmitEditing={() => void signIn()}
                 editable={busy === null}
-                accessibilityLabel="密码"
+                accessibilityLabel={t('connect.password')}
                 style={[styles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
               />
             </>
@@ -197,13 +200,13 @@ export function ConnectScreen() {
             {busy ? (
               <ActivityIndicator color={colors.accentText} />
             ) : (
-              <Text style={[styles.primaryText, { color: colors.accentText }]}>{probe ? '登录' : '继续'}</Text>
+              <Text style={[styles.primaryText, { color: colors.accentText }]}>{probe ? t('connect.signIn') : t('connect.continue')}</Text>
             )}
           </Pressable>
 
           {reauth ? (
             <Pressable accessibilityRole="button" onPress={() => void access.signOut()} style={styles.secondary}>
-              <Text style={[styles.link, { color: colors.textMuted }]}>退出此账号并清除本机数据</Text>
+              <Text style={[styles.link, { color: colors.textMuted }]}>{t('connect.signOutAndClear')}</Text>
             </Pressable>
           ) : null}
         </ScrollView>

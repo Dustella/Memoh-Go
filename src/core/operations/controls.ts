@@ -9,6 +9,8 @@
  * question again and decides with current information (docs/03-sync-contract.md
  * "新的离线审批或停止建议等同步后明确操作，避免旧意图延迟生效").
  */
+import { t } from '../i18n';
+
 export type ControlKind = 'abort' | 'tool_approval_response' | 'user_input_response';
 
 /**
@@ -139,13 +141,13 @@ export function controlFailureText(code: string | undefined): string {
     case 'tool_approval.expired':
     case 'user_input.expired':
     case 'tool_approval.not_found':
-      return '这个请求已过期或已被处理';
+      return t('control.expired');
     case 'tool_approval.forbidden':
     case 'user_input.forbidden':
-      return '你没有权限处理这个请求';
+      return t('control.forbidden');
     case 'tool_approval.ambiguous':
-      return '有多个待处理请求，请刷新后重试';
+      return t('control.ambiguous');
     default:
-      return code ? `操作未完成（${code}）` : '操作未完成';
+      return code ? t('control.failedCode', { code }) : t('control.failed');
   }
 }

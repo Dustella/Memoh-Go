@@ -1,3 +1,4 @@
+import { t, tn } from '../../core/i18n';
 import type { ControlRequest } from '../../core/operations/controls';
 import type { OutboxEntry } from '../../core/operations/outbox';
 import type { SocketStatus } from '../../data/remote/runtimeSocket';
@@ -37,15 +38,15 @@ export type ChatStatusInput = Readonly<{
 }>;
 
 function connectionLine(input: ChatStatusInput): StatusLine | null {
-  if (input.socket === 'connecting') return { kind: 'connection', tone: 'info', text: '正在连接…' };
-  if (input.socket === 'closed') return { kind: 'connection', tone: 'warning', text: '未连接，显示的是本机保存的内容' };
+  if (input.socket === 'connecting') return { kind: 'connection', tone: 'info', text: t('chat.status.connecting') };
+  if (input.socket === 'closed') return { kind: 'connection', tone: 'warning', text: t('chat.status.offline') };
   return null;
 }
 
 function syncLine(input: ChatStatusInput): StatusLine | null {
-  if (input.historyError) return { kind: 'sync', tone: 'warning', text: '历史记录同步失败', action: 'retry_sync' };
+  if (input.historyError) return { kind: 'sync', tone: 'warning', text: t('chat.status.historyFailed'), action: 'retry_sync' };
   // Socket up but the first snapshot is not in yet: a running reply may still be catching up.
-  if (input.socket === 'open' && !input.live) return { kind: 'sync', tone: 'info', text: '正在获取最新状态…' };
+  if (input.socket === 'open' && !input.live) return { kind: 'sync', tone: 'info', text: t('chat.status.fetchingLive') };
   return null;
 }
 
@@ -58,19 +59,19 @@ function operationsLine(input: ChatStatusInput): StatusLine | null {
   const parts: string[] = [];
   let tone: StatusTone = 'info';
   if (failedSends > 0) {
-    parts.push(`${failedSends} 条消息发送失败`);
+    parts.push(tn('chat.status.failedSends', failedSends));
     tone = 'error';
   }
   if (unsure > 0) {
-    parts.push(`${unsure} 条消息可能未送达，请确认`);
+    parts.push(tn('chat.status.unsureSends', unsure));
     if (tone !== 'error') tone = 'warning';
   }
   if (stopFailed) {
-    parts.push('停止请求未送达');
+    parts.push(t('chat.status.stopUnsent'));
     if (tone !== 'error') tone = 'warning';
   }
   // Queued sends are normal while connected (they go out in a moment); only say so when they are stuck.
-  if (waiting > 0 && input.socket !== 'open') parts.push(`${waiting} 条消息将在连接后发送`);
+  if (waiting > 0 && input.socket !== 'open') parts.push(tn('chat.status.waitingSends', waiting));
   return parts.length > 0 ? { kind: 'operations', tone, text: parts.join(' · ') } : null;
 }
 

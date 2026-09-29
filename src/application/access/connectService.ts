@@ -17,6 +17,7 @@ import { replaceBots } from '../../data/local/conversationStore';
 import {
   deleteConnection,
   loadLastUsedConnection,
+  setConnectionTeam,
   touchConnection,
   upsertConnection,
   type Connection,
@@ -289,6 +290,21 @@ export class ConnectionManager {
       await touchConnection(this.deps.db, session.connection.connectionId, this.deps.now());
       return bots;
     });
+  }
+
+  /**
+   * ID-05: move this account to another Team. Everything local is keyed by
+   * scope (deployment + account + team), so the previous Team's cache, drafts
+   * and unsent messages stay behind untouched and resume when switched back.
+   */
+  async switchTeam(teamId: string): Promise<SignedInSession> {
+    const state = this.current;
+    if (state.kind !== 'signed_in') throw new NeedsSignInError();
+    if (state.session.connection.teamId === teamId) return state.session;
+    const connection = await setConnectionTeam(this.deps.db, state.session.connection.connectionId, teamId, this.deps.now());
+    const session = { ...state.session, connection, scope: scopeOf(connection) };
+    this.set({ kind: 'signed_in', session });
+    return session;
   }
 
   /** Forget this account on this device: token, cached data and unsent messages. */

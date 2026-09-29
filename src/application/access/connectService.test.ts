@@ -233,3 +233,42 @@ describe('bots and sign out', () => {
     expect(await listConnections(db)).toEqual([]);
   });
 });
+
+
+describe('team switching (ID-05)', () => {
+  it('moves to a new scope, keeps the old Team\u2019s data, and survives restore and re-sign-in', async () => {
+    const { manager, deps, probe } = await signedIn();
+    const first = manager.state.kind === 'signed_in' ? manager.state.session : null;
+    const oldKey = { scope: first!.scope, botId: 'bot-kitty', sessionId: 's1' };
+    await manager.syncBots();
+    await saveDraft(db, oldKey, 'team A draft', 1);
+
+    const next = await manager.switchTeam('team-b');
+    expect(next.scope).not.toBe(first!.scope);
+    expect(next.connection.teamId).toBe('team-b');
+    // Nothing from Team A is visible under Team B, and Team A's data is untouched.
+    expect(await loadBots(db, next.scope)).toEqual([]);
+    expect(await loadDraft(db, { ...oldKey, scope: next.scope })).toBe('');
+    expect(await loadDraft(db, oldKey)).toBe('team A draft');
+    // Same credential: switching is local, the account does not sign in again.
+    expect(next.credential).toEqual(first!.credential);
+
+    const relaunched = new ConnectionManager(deps);
+    const restored = await relaunched.restore();
+    expect(restored.kind === 'signed_in' && restored.session.connection.teamId).toBe('team-b');
+
+    // Signing in again as the same account keeps the chosen Team.
+    await manager.signIn(probe, 'admin', 'admin123');
+    expect(manager.state.kind === 'signed_in' && manager.state.session.connection.teamId).toBe('team-b');
+
+    await manager.switchTeam(first!.connection.teamId);
+    expect(manager.state.kind === 'signed_in' && manager.state.session.scope).toBe(first!.scope);
+    expect(await loadDraft(db, oldKey)).toBe('team A draft');
+  });
+
+  it('refuses while signed out', async () => {
+    const { manager } = setup();
+    await manager.restore();
+    await expect(manager.switchTeam('x')).rejects.toBeInstanceOf(NeedsSignInError);
+  });
+});

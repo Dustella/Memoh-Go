@@ -119,6 +119,33 @@ describe('composeRows', () => {
     expect(rows.at(-1)).toMatchObject({ text: 'next', state: 'unsure' });
   });
 
+  it('places steer messages after the block the run took them at, and shows a steer turn only once', () => {
+    const live = {
+      ...run('running'),
+      messages: [
+        { id: 1, type: 'text' as const, content: 'part one' },
+        { id: 2, type: 'text' as const, content: 'part two' },
+      ],
+      steer_turns: [
+        { item_id: 'st1', status: 'applied' as const, text: 'keep it short', turn_id: 't3', after_message_id: 1, timestamp: 'x' },
+        { item_id: 'st0', status: 'claimed' as const, text: 'early', after_message_id: 0, timestamp: 'x' },
+      ],
+      user_turns: [
+        { turn_id: 't2', role: 'user' as const, text: 'q2', timestamp: 'x' },
+        { turn_id: 't3', role: 'user' as const, text: 'keep it short', timestamp: 'x' },
+      ],
+    };
+    const rows = composeRows({ history: [], run: live, pending: [] });
+    expect(rows.map((r) => (r.kind === 'user' ? `u:${r.text}${r.steer ? '*' : ''}` : r.kind === 'markdown' ? `m:${r.source.trim()}` : r.kind))).toEqual([
+      'u:q2',
+      'u:early*',
+      'm:part one',
+      'u:keep it short*',
+      'm:part two',
+      'working',
+    ]);
+  });
+
   it('marks stopped and failed runs', () => {
     expect(composeRows({ history: [], run: run('aborted'), pending: [] }).at(-1)).toMatchObject({ kind: 'notice', text: '已停止' });
     expect(composeRows({ history: [], run: { ...run('errored'), error: 'model down' }, pending: [] }).at(-1)).toMatchObject({
