@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import capturedHistory from '../../../contracts/fixtures/captured/markdown-turn.history.json';
 import history from '../../../contracts/fixtures/history-page.json';
 import type { Turn } from '../../core/conversation/types';
-import { composeRows, historyRows, turnRows } from './turnRows';
+import { composeRows, copyChoices, historyRows, turnRows, type ChatRow } from './turnRows';
 
 describe('turnRows', () => {
   it('live pending decisions are interactive and carry their control state; history ones are not', () => {
@@ -125,5 +125,34 @@ describe('composeRows', () => {
       tone: 'error',
       text: 'model down',
     });
+  });
+});
+
+describe('copyChoices (CH-12)', () => {
+  const md = (key: string, turnId: string, source: string): ChatRow => ({ kind: 'markdown', key, turnId, source, first: false });
+  const rows: ChatRow[] = [
+    { kind: 'user', key: 'u', turnId: 't1', text: 'hi', attachments: 0 },
+    md('a', 't1', '# Title\n'),
+    md('b', 't1', 'Body para.\n'),
+    md('c', 't2', 'Other turn'),
+  ];
+
+  it('copies a user message as is', () => {
+    expect(copyChoices(rows, rows[0]!)).toEqual([{ label: '复制', text: 'hi' }]);
+  });
+
+  it('offers the whole reply of the same turn and the single block', () => {
+    expect(copyChoices(rows, rows[2]!)).toEqual([
+      { label: '复制整条回复', text: '# Title\n\nBody para.' },
+      { label: '复制本段', text: 'Body para.' },
+    ]);
+  });
+
+  it('collapses to one choice when the reply is a single block', () => {
+    expect(copyChoices(rows, rows[3]!)).toEqual([{ label: '复制回复', text: 'Other turn' }]);
+  });
+
+  it('offers nothing for structural rows', () => {
+    expect(copyChoices(rows, { kind: 'edge', key: 'e', turnId: '', state: 'beginning' })).toEqual([]);
   });
 });

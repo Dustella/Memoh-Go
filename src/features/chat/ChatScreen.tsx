@@ -4,8 +4,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -15,10 +13,14 @@ import {
 import { isRunActive } from '../../core/conversation/types';
 import type { OutboxEntry } from '../../core/operations/outbox';
 import { MarkdownBlockView } from '../../ui/markdown/MarkdownBlockView';
+import { KeyboardAware } from '../../ui/components/KeyboardAware';
 import { fontSize, radius, spacing, useTheme } from '../../ui/theme';
+import { chatStatus, type StatusAction } from './chatStatus';
 import { Composer } from './components/Composer';
+import { MessageMenu } from './components/MessageMenu';
+import { StatusStrip } from './components/StatusStrip';
 import { QuestionCard, ToolRow, type DecisionActions } from './components/DecisionCards';
-import { composeRows, type ChatRow, type ControlView, type PendingSend } from './turnRows';
+import { composeRows, copyChoices, type ChatRow, type ControlView, type CopyChoice, type PendingSend } from './turnRows';
 import { useHistory } from './useConversation';
 import { useLiveSession } from './useLiveSession';
 import { useReadingAnchor, useRememberChat } from './usePagePersistence';
@@ -34,19 +36,25 @@ const WORKING_LABEL: Record<string, string> = {
   finishing: '收尾中',
 };
 
-function Reasoning({ text, durationMs }: { text: string; durationMs?: number }) {
+function Reasoning({ text, durationMs, onLongPress }: { text: string; durationMs?: number; onLongPress: () => void }) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
   const label = durationMs ? `思考了 ${Math.max(1, Math.round(durationMs / 1000))} 秒` : '思考过程';
   return (
-    <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen((v) => !v)}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ expanded: open }}
+      onPress={() => setOpen((v) => !v)}
+      delayLongPress={LONG_PRESS_MS}
+      onLongPress={onLongPress}
+    >
       <View style={styles.chipRow}>
         <Ionicons name="bulb-outline" size={14} color={colors.textMuted} />
         <Text style={[styles.chipText, { color: colors.textMuted }]}>{label}</Text>
         <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textSubtle} />
       </View>
       {open ? (
-        <Text selectable style={[styles.reasoning, { color: colors.textMuted, borderLeftColor: colors.border }]}>{text}</Text>
+        <Text style={[styles.reasoning, { color: colors.textMuted, borderLeftColor: colors.border }]}>{text}</Text>
       ) : null}
     </Pressable>
   );
@@ -78,7 +86,11 @@ type RowActions = DecisionActions &
     resend: (invocationId: string) => void;
     discard: (invocationId: string) => void;
     retry: (invocationId: string) => void;
+    /** Long-press: open the copy menu for this row (CH-12). */
+    menu: (row: ChatRow) => void;
   }>;
+
+const LONG_PRESS_MS = 350;
 
 const Row = memo(function Row({ row, actions }: { row: ChatRow; actions: RowActions }) {
   const { colors } = useTheme();
@@ -95,21 +107,30 @@ const Row = memo(function Row({ row, actions }: { row: ChatRow; actions: RowActi
     case 'user':
       return (
         <View style={styles.userRow}>
-          <View style={[styles.userBubble, { backgroundColor: colors.userBubble }]}>
-            <Text selectable style={[styles.userText, { color: colors.userBubbleText }]}>{row.text}</Text>
+          <Pressable
+            delayLongPress={LONG_PRESS_MS}
+            onLongPress={() => actions.menu(row)}
+            accessibilityHint="长按可复制"
+            style={[styles.userBubble, { backgroundColor: colors.userBubble }]}
+          >
+            <Text style={[styles.userText, { color: colors.userBubbleText }]}>{row.text}</Text>
             {row.attachments > 0 ? (
               <Text style={[styles.userMeta, { color: colors.textMuted }]}>附件 {row.attachments} 个</Text>
             ) : null}
-          </View>
+          </Pressable>
         </View>
       );
     case 'pending': {
       const tone = row.state === 'failed' ? colors.danger : row.state === 'unsure' ? colors.warning : colors.textSubtle;
       return (
         <View style={styles.userRow}>
-          <View style={[styles.userBubble, { backgroundColor: colors.userBubble, opacity: row.state === 'sending' ? 0.7 : 1 }]}>
-            <Text selectable style={[styles.userText, { color: colors.userBubbleText }]}>{row.text}</Text>
-          </View>
+          <Pressable
+            delayLongPress={LONG_PRESS_MS}
+            onLongPress={() => actions.menu(row)}
+            style={[styles.userBubble, { backgroundColor: colors.userBubble, opacity: row.state === 'sending' ? 0.7 : 1 }]}
+          >
+            <Text style={[styles.userText, { color: colors.userBubbleText }]}>{row.text}</Text>
+          </Pressable>
           <View style={styles.pendingMeta}>
             {row.state === 'sending' ? (
               <Text style={[styles.metaText, { color: tone }]}>发送中…</Text>
@@ -136,14 +157,14 @@ const Row = memo(function Row({ row, actions }: { row: ChatRow; actions: RowActi
       return <Working status={row.stopping ? 'aborting' : row.status} />;
     case 'markdown':
       return (
-        <View style={[styles.assistant, top]}>
+        <Pressable delayLongPress={LONG_PRESS_MS} onLongPress={() => actions.menu(row)} style={[styles.assistant, top]}>
           <MarkdownBlockView source={row.source} />
-        </View>
+        </Pressable>
       );
     case 'reasoning':
       return (
         <View style={[styles.assistant, top]}>
-          <Reasoning text={row.text} durationMs={row.durationMs} />
+          <Reasoning text={row.text} durationMs={row.durationMs} onLongPress={() => actions.menu(row)} />
         </View>
       );
     case 'tool':
@@ -200,6 +221,10 @@ export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: str
     return [{ kind: 'edge', key: 'edge', turnId: '', state } as const, ...body];
   }, [history.turns, history.checkpoint?.hasOlder, history.loadingOlder, snapshot, stopping]);
 
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const [menu, setMenu] = useState<CopyChoice[] | null>(null);
+
   const actions = useMemo<RowActions>(
     () => ({
       resend: (id) => void live.confirmResend(id),
@@ -207,6 +232,10 @@ export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: str
       retry: (id) => void live.retryFailed(id),
       approve: (id, decision, optionId) => void live.respondApproval(id, decision, optionId),
       answer: (id, response) => void live.respondUserInput(id, response),
+      menu: (row) => {
+        const choices = copyChoices(rowsRef.current, row);
+        if (choices.length > 0) setMenu(choices);
+      },
     }),
     [live],
   );
@@ -241,20 +270,27 @@ export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: str
     saveAnchor({ atBottom: false, turnId: row.turnId || row.key, rowKey: row.key, offsetPx: Math.max(0, state.scroll - state.positionAtIndex(index)) });
   }, [saveAnchor]);
 
-  const offline = snapshot.socket !== 'open' || history.error;
+  const status = useMemo(
+    () =>
+      chatStatus({
+        socket: snapshot.socket,
+        live: snapshot.live,
+        historyLoaded: history.loaded,
+        historyError: history.error,
+        pending: snapshot.pending,
+        failed: snapshot.failed,
+        controls: snapshot.controls,
+      }),
+    [snapshot, history.loaded, history.error],
+  );
+  const refreshHistory = history.refresh;
+  const onStatusAction = useCallback((action: StatusAction) => {
+    if (action === 'retry_sync') void refreshHistory();
+  }, [refreshHistory]);
+
   return (
-    <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      {offline && history.loaded ? (
-        <View style={[styles.banner, { backgroundColor: colors.surfaceMuted }]}>
-          <Ionicons name={snapshot.socket === 'connecting' ? 'sync-outline' : 'cloud-offline-outline'} size={14} color={colors.warning} />
-          <Text numberOfLines={2} style={[styles.bannerText, { color: colors.warning }]}>
-            {snapshot.socket === 'connecting' ? '正在连接…' : '未连接，显示的是本机保存的内容。消息会在连接后发送。'}
-          </Text>
-        </View>
-      ) : null}
+    <KeyboardAware style={[styles.flex, { backgroundColor: colors.background }]}>
+      <StatusStrip lines={status} onAction={onStatusAction} />
 
       {history.loaded && rows.length === 0 && !history.syncing ? (
         <View style={styles.center}>
@@ -290,10 +326,15 @@ export function ChatScreen({ botId, sessionId }: { botId: string; sessionId: str
         botId={botId}
         draftKey={sessionId}
         running={running}
-        onSend={(text) => void live.send(text)}
+        onSend={(text) => {
+          void live.send(text);
+          // Sending means "take me to the newest message", even when reading older history.
+          requestAnimationFrame(() => void listRef.current?.scrollToEnd({ animated: true }));
+        }}
         onStop={() => live.abort()}
       />
-    </KeyboardAvoidingView>
+      <MessageMenu choices={menu} onClose={() => setMenu(null)} />
+    </KeyboardAware>
   );
 }
 
@@ -303,8 +344,6 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: fontSize.body },
   headerRow: { height: 48, alignItems: 'center', justifyContent: 'center' },
   beginning: { fontSize: fontSize.caption, textAlign: 'center', paddingVertical: spacing.lg },
-  banner: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
-  bannerText: { flex: 1, fontSize: fontSize.small },
   userRow: { paddingHorizontal: spacing.lg, paddingTop: spacing.xl, alignItems: 'flex-end' },
   userBubble: {
     maxWidth: '85%',

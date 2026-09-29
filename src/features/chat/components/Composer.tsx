@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useKeyboardVisible } from '../../../ui/components/KeyboardAware';
 import { fontSize, spacing, useTheme } from '../../../ui/theme';
 import { useDraft } from '../useLiveSession';
 
@@ -29,6 +30,7 @@ export function Composer({
 }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const keyboard = useKeyboardVisible();
   const draft = useDraft(botId, draftKey);
   const canSend = draft.text.trim().length > 0;
 
@@ -43,7 +45,7 @@ export function Composer({
     <View
       style={[
         styles.composer,
-        { borderTopColor: colors.border, backgroundColor: colors.surface, paddingBottom: Math.max(insets.bottom, spacing.sm) },
+        { borderTopColor: colors.border, backgroundColor: colors.surface, paddingBottom: keyboard ? spacing.sm : Math.max(insets.bottom, spacing.sm) },
       ]}
     >
       <TextInput

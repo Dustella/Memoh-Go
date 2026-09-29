@@ -86,14 +86,14 @@ function renderBlockToken(token: Token, colors: Palette, key: string, bodyStyle:
       const heading = token as Tokens.Heading;
       const size = heading.depth <= 1 ? 22 : heading.depth === 2 ? 19 : 17;
       return (
-        <Text key={key} selectable style={[bodyStyle, styles.heading, { fontSize: size, lineHeight: size * 1.35 }]}>
+        <Text key={key} style={[bodyStyle, styles.heading, { fontSize: size, lineHeight: size * 1.35 }]}>
           {renderInline(heading.tokens, colors, key)}
         </Text>
       );
     }
     case 'paragraph':
       return (
-        <Text key={key} selectable style={bodyStyle}>
+        <Text key={key} style={bodyStyle}>
           {renderInline((token as Tokens.Paragraph).tokens, colors, key)}
         </Text>
       );
@@ -103,7 +103,7 @@ function renderBlockToken(token: Token, colors: Palette, key: string, bodyStyle:
         <View key={key} style={[styles.codeBlock, { backgroundColor: colors.codeBackground, borderColor: colors.border }]}>
           {code.lang ? <Text style={[styles.codeLang, { color: colors.textSubtle }]}>{code.lang}</Text> : null}
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <Text selectable style={[styles.codeText, { color: colors.codeText }]}>
+            <Text style={[styles.codeText, { color: colors.codeText }]}>
               {code.text}
             </Text>
           </ScrollView>
@@ -139,7 +139,7 @@ function renderBlockToken(token: Token, colors: Palette, key: string, bodyStyle:
               <View style={styles.listBody}>
                 {item.tokens.map((child, childIndex) =>
                   child.type === 'text' ? (
-                    <Text key={`${key}.${index}.${childIndex}`} selectable style={bodyStyle}>
+                    <Text key={`${key}.${index}.${childIndex}`} style={bodyStyle}>
                       {renderInline((child as Tokens.Text).tokens ?? [child], colors, `${key}.${index}.${childIndex}`)}
                     </Text>
                   ) : (
@@ -168,7 +168,7 @@ function renderBlockToken(token: Token, colors: Palette, key: string, bodyStyle:
             {table.rows.map((row, rowIndex) => (
               <View key={rowIndex} style={styles.row}>
                 {row.map((cell, index) => (
-                  <Text key={index} selectable style={[bodyStyle, ...cellStyle]}>
+                  <Text key={index} style={[bodyStyle, ...cellStyle]}>
                     {renderInline(cell.tokens, colors, `${key}.${rowIndex}.${index}`)}
                   </Text>
                 ))}
@@ -184,7 +184,7 @@ function renderBlockToken(token: Token, colors: Palette, key: string, bodyStyle:
       return null;
     default:
       return 'raw' in token ? (
-        <Text key={key} selectable style={bodyStyle}>
+        <Text key={key} style={bodyStyle}>
           {String(token.raw)}
         </Text>
       ) : null;

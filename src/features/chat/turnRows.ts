@@ -235,3 +235,41 @@ export function composeRows({ history, run, pending, controls, stopping = false 
   }
   return rows;
 }
+
+
+export type CopyChoice = Readonly<{ label: string; text: string }>;
+
+/**
+ * CH-12: what a long-press on `row` can copy. A reply is rendered as one row
+ * per Markdown block, so an assistant block offers both the block and the
+ * whole reply (every Markdown block of that turn, in order).
+ */
+export function copyChoices(rows: readonly ChatRow[], row: ChatRow): CopyChoice[] {
+  switch (row.kind) {
+    case 'user':
+    case 'pending':
+      return row.text ? [{ label: '复制', text: row.text }] : [];
+    case 'markdown': {
+      const reply = rows
+        .filter((r): r is Extract<ChatRow, { kind: 'markdown' }> => r.kind === 'markdown' && r.turnId === row.turnId)
+        .map((r) => r.source.trim())
+        .filter(Boolean)
+        .join('\n\n');
+      const block = row.source.trim();
+      return reply === block
+        ? [{ label: '复制回复', text: reply }]
+        : [
+            { label: '复制整条回复', text: reply },
+            { label: '复制本段', text: block },
+          ];
+    }
+    case 'reasoning':
+      return row.text ? [{ label: '复制思考过程', text: row.text }] : [];
+    case 'tool':
+      return [row.output ? { label: '复制工具输出', text: row.output } : null, row.input ? { label: '复制工具输入', text: row.input } : null].filter(
+        (c): c is CopyChoice => c !== null,
+      );
+    default:
+      return [];
+  }
+}

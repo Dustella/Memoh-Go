@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAware } from '../../ui/components/KeyboardAware';
 
 import { useServices } from '../../bootstrap/AppServices';
 import type { SessionCreation } from '../../core/operations/sessionCreate';
@@ -58,10 +59,7 @@ export function NewChatScreen({ botId, requestId: initialRequest }: { botId: str
   };
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAware style={[styles.flex, { backgroundColor: colors.background }]}>
       {creation ? (
         <View style={styles.flex}>
           <View style={styles.userRow}>
@@ -104,7 +102,7 @@ export function NewChatScreen({ botId, requestId: initialRequest }: { botId: str
       )}
 
       {creation ? null : <Composer botId={botId} draftKey={NEW_CHAT_DRAFT} autoFocus onSend={send} />}
-    </KeyboardAvoidingView>
+    </KeyboardAware>
   );
 }
 

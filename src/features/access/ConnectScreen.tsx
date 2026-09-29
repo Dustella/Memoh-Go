@@ -2,8 +2,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { probeServer, type ServerProbe } from '../../application/access/connectService';
 import { useAccessState, useServices } from '../../bootstrap/AppServices';
 import type { FetchFn } from '../../data/remote/memohClient';
+import { KeyboardAware } from '../../ui/components/KeyboardAware';
 import { fontSize, radius, spacing, useTheme } from '../../ui/theme';
 
 type OkProbe = Extract<ServerProbe, { kind: 'ok' }>;
@@ -94,7 +93,7 @@ export function ConnectScreen() {
 
   return (
     <SafeAreaView style={[styles.flex, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAware style={styles.flex}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={[styles.logo, { backgroundColor: colors.accentSoft }]}>
             <Ionicons name="sparkles" size={28} color={colors.accent} />
@@ -208,7 +207,7 @@ export function ConnectScreen() {
             </Pressable>
           ) : null}
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAware>
     </SafeAreaView>
   );
 }
